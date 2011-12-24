@@ -1,3 +1,18 @@
+; sprite.agb - Avik Das
+;
+; A very simple demo, based on the Game Boy Programming Tutorial by
+; David Pello available at
+; http://wiki.ladecadence.net/doku.php?id=tutorial_de_ensamblador.
+; This demo can be assembled using RGBDS. The resulting output should
+; be viewable in any compliant Game Boy emulator, though the Linux
+; version of VisualBoy Advance seems to fail (the Windows version runs
+; the demo perfectly). The demo has been tested on mednafen as well.
+;
+; This demo serves two purposes. Firstly, my goal is to learn Game Boy
+; development, which I can only achieve by creating a program.
+; Secondly, the entirety of the program will be in one file, in order
+; to show at a glance all the different parts of the program.
+
 SECTION "start",HOME[$100]
   nop
   jp    start
@@ -21,6 +36,8 @@ SECTION "start",HOME[$100]
   DB 0   ; mask ROM version number, usually 0
   DB 0   ; complement check. computed by rgbfix. important.
   DB 0   ; checksum. computed by rgbfix. not important.
+
+  ; = INITIALIZATION ==================================================
 
 start:
   nop
@@ -109,10 +126,14 @@ init:
                  ; BG & window on
   ld [$ff40],a   ; write it to the LCD Control register
 
+  ; = MAIN LOOP =======================================================
+
 loop:
   halt
   nop
   jr   loop
+
+  ; = UTILITY FUNCTIONS ===============================================
 
 memcpy:
   ; parameters:
@@ -149,6 +170,8 @@ wait_vblank:
   ld  [$ff40],a ; write the new value back to the LCD Control register
 
   ret ; and done...
+
+  ; = DATA ============================================================
 
 bgpal:
   DB %11100100 ; black to white
