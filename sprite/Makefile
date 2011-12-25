@@ -4,10 +4,10 @@ RGBLNK := rgblink
 RGBFIX := rgbfix
 
 TARGET := $(shell basename $(CURDIR)).gb
-SOURCE := $(wildcard *.agb)
-OFILES := $(SOURCE:.agb=.obj)
+SOURCE := $(wildcard *.asm)
+OFILES := $(SOURCE:.asm=.obj)
 
-%.obj : %.agb
+%.obj : %.asm
 	$(RGBASM) -o$@ $<
 
 $(TARGET): $(OFILES)
