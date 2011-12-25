@@ -21,6 +21,11 @@ programs are tested on VisualBoy Advance and mednafen, which are
 available at http://vba.ngemu.com/ and http://mednafen.sourceforge.net/
 respectively.
 
+The programs are written in vim, and a modeline is present in the source
+files that gives them the appropriate syntax highlighting. The syntax
+file is available on the vim scripts website as rgbasm.vim
+(https://github.com/vim-scripts/rgbasm.vim).
+
 ~~ INCLUDED PROGRAMS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 More detailed descriptions are available in the README files inside the
