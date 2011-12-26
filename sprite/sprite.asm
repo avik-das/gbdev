@@ -4,9 +4,7 @@
 ; David Pello available at
 ; http://wiki.ladecadence.net/doku.php?id=tutorial_de_ensamblador.
 ; This demo can be assembled using RGBDS. The resulting output should
-; be viewable in any compliant Game Boy emulator, though the Linux
-; version of VisualBoy Advance seems to fail (the Windows version runs
-; the demo perfectly). The demo has been tested on mednafen as well.
+; be viewable in any compliant Game Boy emulator.
 ;
 ; This demo serves two purposes. Firstly, my goal is to learn Game Boy
 ; development, which I can only achieve by creating a program.
@@ -82,6 +80,13 @@ init:
   ld b,4
   call memcpy
 
+  ; zero out the OAM
+  ld de,$fe00
+  ld b,255
+  call zeromem
+  ld b,1
+  call zeromem
+
   ; load the sprite tiles into the Sprite Pattern Table
   ld hl,ghost ; source address
   ld de,$8000 ; destination address
@@ -150,10 +155,24 @@ memcpy:
   ret z     ; return if all bytes written
   jr memcpy
 
+zeromem:
+    ; parameters
+    ;   de = destination address
+    ;   b  = number of bytes to zero out
+    ; assumes:
+    ;   b  > 0
+  ld a,$0   ; we will only be writing zeros
+.zeromem_loop:
+  ld [de],a ; store one byte in the destination
+  inc de    ; prepare to write another byte
+  dec b     ; decrement the counter
+  ret z     ; return if all bytes written
+  jr .zeromem_loop
+
 lcd_off:
   ld  a,[$ff40] ; load the LCD Control register
   bit 7,a       ; check bit 7, whether the LCD is on
-  ret nz        ; if off, return immediately
+  ret z         ; if off, return immediately
 
 wait_vblank:
   ld a,[$ff44]  ; load the vertical line the LCD is at
@@ -193,7 +212,6 @@ cloud:
   DB $a8,$00,$00,$00,$ff,$00,$00,$00
   DB $88,$00,$08,$00,$a4,$00,$04,$00 ; tile 5
   DB $04,$00,$08,$00,$f0,$00,$00,$00
-  ; TODO: rest of the tiles
 
 ghost:
   ; foreground ghost, 2x2 tiles

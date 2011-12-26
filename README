@@ -16,15 +16,32 @@ using the RGBDS Assembler and Linker. The version of the toolkit used
 for these programs may be found at https://github.com/bentley/rgbds .
 The Makefiles assume that the toolkit is on the PATH.
 
-To run the programs after assembly, a GB emulator is required. The
-programs are tested on VisualBoy Advance and mednafen, which are
-available at http://vba.ngemu.com/ and http://mednafen.sourceforge.net/
-respectively.
+To run the program after assembly, a GB emulator is required. The next
+section outlines possible suitable emulators.
 
 The programs are written in vim, and a modeline is present in the source
 files that gives them the appropriate syntax highlighting. The syntax
 file is available on the vim scripts website as rgbasm.vim
 (https://github.com/vim-scripts/rgbasm.vim).
+
+~~ EMULATOR COMPATIBILITY ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The programs are tested on a number of emulators:
+
+* gambatte (http://sourceforge.net/projects/gambatte/)
+  This emulator aims to be as accurate as possible, and is therefore the
+  most suitable for testing. This will be the primary target for these
+  programs.
+
+* VisualBoy Advance (http://vba-m.com/).
+  The VBA-M fork is preferred, as the original project is now inactive.
+  This emulator is very popular, so it makes sense to ensure
+  compatibility.
+
+* mednafen (http://mednafen.sourceforge.net/)
+  This emulator intends to emulate multiple platforms. These programs
+  may not be tested extensively on this emulator, but it remains an
+  option, and the programs may occasionally be tested on it.
 
 ~~ INCLUDED PROGRAMS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
