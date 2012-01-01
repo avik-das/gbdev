@@ -22,7 +22,7 @@ SECTION "start",HOME[$100]
   DB $00,$08,$11,$1F,$88,$89,$00,$0E,$DC,$CC,$6E,$E6,$DD,$DD,$D9,$99
   DB $BB,$BB,$67,$63,$6E,$0E,$EC,$CC,$DD,$DC,$99,$9F,$BB,$B9,$33,$3E
   
-  DB "AVIKTEST",0,0,0,0,0,0,0,0 ; title, upper case ASCII, 15 bytes
+  DB "AVIKTEST",0,0,0,0,0,0,0 ; title, upper case ASCII, 15 bytes
   DB 0   ; not a GBC catridge
   DB 0,0 ; new licensee code, high and low nibbles. not important
   DB 0   ; not SGB
