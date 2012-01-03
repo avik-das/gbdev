@@ -405,7 +405,9 @@ wait_vblank:
   ; = DATA ============================================================
 
 bgpal:
-  DB %11100100 ; black to white
+  DB %00000100 ; white is transparent, with another non-transparent
+               ; white. The only other important color is the second-
+               ; lightest color.
 
 sppal:
   DB %00011100 ; missing second darkest
@@ -413,20 +415,18 @@ sppal:
 
 cloud:
   ; background cloud, 3x2 tiles
-  ; TODO: make inside of cloud something other than color 0 (and make
-  ;       that color white)
-  DB $00,$00,$00,$00,$00,$00,$03,$00 ; tile 0
-  DB $04,$00,$0b,$00,$17,$00,$17,$00
-  DB $00,$00,$1c,$00,$22,$00,$41,$00 ; tile 1
-  DB $a8,$00,$55,$00,$ea,$00,$d4,$00
-  DB $00,$00,$00,$00,$00,$00,$00,$00 ; tile 2
-  DB $e0,$00,$10,$00,$08,$00,$08,$00
-  DB $0b,$00,$17,$00,$2f,$00,$2f,$00 ; tile 3
-  DB $27,$00,$10,$00,$0f,$00,$00,$00
-  DB $e8,$00,$d2,$00,$a8,$00,$d5,$00 ; tile 4
-  DB $a8,$00,$00,$00,$ff,$00,$00,$00
-  DB $88,$00,$08,$00,$a4,$00,$04,$00 ; tile 5
-  DB $04,$00,$08,$00,$f0,$00,$00,$00
+DB $00,$00,$00,$00,$00,$00,$03,$00 ; tile 0
+DB $04,$03,$0b,$04,$17,$08,$17,$08
+DB $00,$00,$1c,$00,$22,$1c,$41,$3e ; tile 1
+DB $a8,$57,$55,$aa,$ea,$15,$d4,$2b
+DB $00,$00,$00,$00,$00,$00,$00,$00 ; tile 2
+DB $e0,$00,$10,$e0,$08,$f0,$08,$f0
+DB $0b,$04,$17,$08,$2f,$10,$2f,$10 ; tile 3
+DB $27,$10,$10,$0f,$0f,$00,$00,$00
+DB $e8,$17,$d2,$2d,$a8,$57,$d5,$2a ; tile 4
+DB $a8,$a7,$00,$ff,$ff,$00,$00,$00
+DB $88,$70,$08,$f0,$a4,$58,$04,$f8 ; tile 5
+DB $04,$f8,$08,$f0,$f0,$00,$00,$00
 
 ghost:
   ; foreground ghost, 2x2 tiles
