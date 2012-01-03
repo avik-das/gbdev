@@ -11,6 +11,36 @@
 ; Secondly, the entirety of the program will be in one file, in order
 ; to show at a glance all the different parts of the program.
 
+  ; = DATA/VARIABLES ==================================================
+
+  ; Here we set up some locations in memory to store data that will be
+  ; used in the program. Typically, we will store data in the internal
+  ; RAM, which 8KB to work with.
+
+  ; The buttons that are joypad pressed on the joypad. The fields are
+  ; as follows:
+  ;   bit 7: down
+  ;   bit 6: up
+  ;   bit 5: left
+  ;   bit 4: right
+  ;   bit 3: start
+  ;   bit 2: select
+  ;   bit 1: B
+  ;   bit 0: A
+  ; When a bit is set, the corresponding button is pressed. This
+  ; structure is updated by read_joypad.
+PAD EQU $c000
+
+  ; = INTERRUPT HANDLERS ==============================================
+
+  ; These are simple interrupt handlers that simply call the actual
+  ; procedures responsible for taking any action. The procedures will
+  ; call "reti".
+
+SECTION "vblank",HOME[$40]
+  nop
+  jp    vblank
+
 SECTION "start",HOME[$100]
   nop
   jp    start
@@ -133,10 +163,131 @@ init:
 
   ; = MAIN LOOP =======================================================
 
+  ld a,%00000001 ; enable V-Blank interrupt
+  ld [$ffff],a
+  ei
+
 loop:
   halt
   nop
+  call read_joypad
   jr   loop
+
+  ; = INTERRUPT HANDLERS ==============================================
+
+vblank:
+  ; TODO: this should be done in the main loop, and the data should be
+  ;       copied during V-Blank.
+  call move_sprites
+  reti
+
+  ; = MAIN LOOP FUNCTIONS =============================================
+
+read_joypad:
+  ; First, we will read the direction pad by sending a value to the
+  ; joypad register (P1) that will enable the d-pad (by clearing bit 4)
+  ; and disable the buttons (by setting bit 5).
+  ld a,%00100000
+  ld [$ff00],a
+
+  ; To minimize the effects of key bouncing, in which the contacts of
+  ; the joypad cause oscillations between the high and low states, we
+  ; read from P1 multiple times and only use the last value read.
+  ld a,[$ff00]
+  ld a,[$ff00]
+  ld a,[$ff00]
+  ld a,[$ff00]
+
+  and  %00001111 ; pick out only the input lines...
+  swap a         ; ...put the states into the high nibble...
+  ld b,a         ; ...and save it away temporarily
+
+  ; Now we want to read the buttons, and that means we disable the d-pad
+  ; (by setting bit 4) and enable the buttons (by clearing bit 5).
+  ld a,%00010000
+  ld [$ff00],a
+
+  ld a,[$ff00]
+  ld a,[$ff00]
+  ld a,[$ff00]
+  ld a,[$ff00]
+
+  and %00001111
+  or  b         ; B contains the d-pad input in the high nibble, so we
+                ; can we incorporate the button input in the low nibble
+
+  ; Now, A contains the state of the d-pad and the buttons, but when a
+  ; bit is cleared, that means the button is pressed. So, we take the
+  ; complement, and we have an intuitive mapping of 1->pressed and
+  ; 0->not pressed.
+  cpl
+  ld  [PAD],a
+
+  ; TODO: compare with "old" state?
+  ret
+
+move_sprites:
+  ld  a,[PAD]
+  bit 4,a
+  jp  z,.move_left
+
+  ld  a,[$fe01]
+  cp  152
+  jp  z,.move_left
+
+  add 2
+  ld  [$fe01],a
+  ld  a,[$fe05]
+  add 2
+  ld  [$fe05],a
+
+.move_left :
+  ld  a,[PAD]
+  bit 5,a
+  jp  z,.move_up
+
+  ld  a,[$fe01]
+  cp  8
+  jp  z,.move_up
+
+  sub 2
+  ld  [$fe01],a
+  ld  a,[$fe05]
+  sub 2
+  ld  [$fe05],a
+
+.move_up   :
+  ld  a,[PAD]
+  bit 6,a
+  jp  z,.move_down
+
+  ld  a,[$fe00]
+  cp  16
+  jp  z,.move_down
+
+  sub 2
+  ld  [$fe00],a
+  ld  a,[$fe04]
+  sub 2
+  ld  [$fe04],a
+
+.move_down :
+  ld  a,[PAD]
+  bit 7,a
+  jp  z,.move_return
+
+  ld  a,[$fe00]
+  cp  144
+  jp  z,.move_down
+
+  add 2
+  ld  [$fe00],a
+  ld  a,[$fe04]
+  add 2
+  ld  [$fe04],a
+
+.move_return
+  ret
 
   ; = UTILITY FUNCTIONS ===============================================
 
