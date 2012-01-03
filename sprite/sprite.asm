@@ -29,7 +29,8 @@
   ;   bit 0: A
   ; When a bit is set, the corresponding button is pressed. This
   ; structure is updated by read_joypad.
-PAD EQU $c000
+PAD    EQU $c000
+OLDPAD EQU $c000+1
 
   ; = INTERRUPT HANDLERS ==============================================
 
@@ -82,6 +83,10 @@ init:
   ; load the object palette 0
   ld a,[sppal] ; load the object palette 0 data
   ld [$ff48],a ; and store it into the object palette 0 register
+
+  ; load the object palette 1
+  ld a,[sppal+1] ; load the object palette 1 data
+  ld [$ff49],a   ; and store it into the object palette 1 register
 
   ; reset the screen position
   ld a,0
@@ -161,6 +166,11 @@ init:
                  ; BG & window on
   ld [$ff40],a   ; write it to the LCD Control register
 
+  ; initialize the RAM variables
+  ld a,0
+  ld [   PAD],a
+  ld [OLDPAD],a
+
   ; = MAIN LOOP =======================================================
 
   ld a,%00000001 ; enable V-Blank interrupt
@@ -178,12 +188,16 @@ loop:
 vblank:
   ; TODO: this should be done in the main loop, and the data should be
   ;       copied during V-Blank.
-  call move_sprites
+  call react_to_input
   reti
 
   ; = MAIN LOOP FUNCTIONS =============================================
 
 read_joypad:
+  ; The state that was current before should now become the old state.
+  ld  a,[PAD]
+  ld  [OLDPAD],a
+
   ; First, we will read the direction pad by sending a value to the
   ; joypad register (P1) that will enable the d-pad (by clearing bit 4)
   ; and disable the buttons (by setting bit 5).
@@ -223,10 +237,9 @@ read_joypad:
   cpl
   ld  [PAD],a
 
-  ; TODO: compare with "old" state?
   ret
 
-move_sprites:
+react_to_input:
   ld  a,[PAD]
   bit 4,a
   jp  z,.move_left
@@ -274,17 +287,65 @@ move_sprites:
 .move_down :
   ld  a,[PAD]
   bit 7,a
-  jp  z,.move_return
+  jp  z,.switch_palette
 
   ld  a,[$fe00]
   cp  144
-  jp  z,.move_down
+  jp  z,.switch_palette
 
   add 2
   ld  [$fe00],a
   ld  a,[$fe04]
   add 2
   ld  [$fe04],a
+
+.switch_palette:
+  ld  a,[PAD]
+  bit 0,a
+  jp  z,.flip_sprite
+
+  ld  a,[OLDPAD]
+  bit 0,a
+  jp  nz,.flip_sprite ; only switch palettes if A wasn't pressed before
+
+  ld  a,[$fe03]
+  xor %00010000
+  ld  [$fe03],a
+  ld  a,[$fe07]
+  xor %00010000
+  ld  [$fe07],a
+
+.flip_sprite:
+  ld  a,[PAD]
+  bit 1,a
+  jp  z,.switch_bg_prio
+
+  ld  a,[OLDPAD]
+  bit 1,a
+  jp  nz,.switch_bg_prio ; only flip if B wasn't pressed before
+
+  ld  a,[$fe03]
+  xor %01000000
+  ld  [$fe03],a
+  ld  a,[$fe07]
+  xor %01000000
+  ld  [$fe07],a
+
+.switch_bg_prio:
+  ld  a,[PAD]
+  bit 2,a
+  jp  z,.move_return
+
+  ld  a,[OLDPAD]
+  bit 2,a
+  jp  nz,.move_return ; only switch if SEL wasn't pressed before
+
+  ld  a,[$fe03]
+  xor %10000000
+  ld  [$fe03],a
+  ld  a,[$fe07]
+  xor %10000000
+  ld  [$fe07],a
 
 .move_return
   ret
@@ -348,9 +409,12 @@ bgpal:
 
 sppal:
   DB %00011100 ; missing second darkest
+  DB %11100000 ; missing second lightest
 
 cloud:
   ; background cloud, 3x2 tiles
+  ; TODO: make inside of cloud something other than color 0 (and make
+  ;       that color white)
   DB $00,$00,$00,$00,$00,$00,$03,$00 ; tile 0
   DB $04,$00,$0b,$00,$17,$00,$17,$00
   DB $00,$00,$1c,$00,$22,$00,$41,$00 ; tile 1
