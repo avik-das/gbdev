@@ -125,7 +125,9 @@ init:
   ; load the sprite tiles into the Sprite Pattern Table
   ld hl,ghost ; source address
   ld de,$8000 ; destination address
-  ld b,64     ; number of bytes to copy
+  ld b,255    ; number of bytes to copy
+  call memcpy
+  ld b,1
   call memcpy
 
   ; display the sprites on the screen by populating the Object
@@ -429,16 +431,54 @@ cloud:
   DB $04,$f8,$08,$f0,$f0,$00,$00,$00
 
 ghost:
-  ; foreground ghost, 2x2 tiles
-  DB $03,$00,$0c,$03,$10,$0f,$11,$0f ; tile 0
+  ; foreground ghost
+  ;
+  ; There are a total of 4 tiles laid out in a 2x2 grid, but because
+  ; the sprites used are 8x16 pixels in dimension, only two sprites are
+  ; required.
+  ;
+  ; Furthermore, there are four frames of animation, so a total of 16
+  ; tiles, or 8 sprites are needed.
+
+  ; frame 0
+  DB $03,$00,$0c,$03,$10,$0f,$11,$0f ; sprite 0
   DB $23,$1d,$27,$19,$27,$19,$61,$1f
   DB $ab,$55,$a5,$5a,$a1,$5f,$61,$1f
   DB $21,$1f,$20,$1f,$26,$19,$19,$00
-  DB $c0,$00,$30,$c0,$f8,$f0,$f8,$f0 ; tile 1
+  DB $c0,$00,$30,$c0,$f8,$f0,$f8,$f0 ; sprite 1
   DB $fc,$d8,$fc,$98,$fc,$98,$fe,$f8
   DB $ff,$5a,$ff,$aa,$ff,$fa,$fe,$f8
   DB $fc,$f8,$fc,$f8,$7c,$98,$98,$00
-  ; TODO: rest of the tiles
+
+  ; frame 1
+  DB $03,$00,$0c,$03,$10,$0f,$11,$0f ; sprite 0
+  DB $23,$1d,$67,$19,$a7,$59,$a1,$5f
+  DB $ab,$55,$65,$1a,$21,$1f,$21,$1f
+  DB $24,$1b,$1a,$01,$01,$00,$00,$00
+  DB $c0,$00,$30,$c0,$f8,$f0,$f8,$f0 ; sprite 1
+  DB $fc,$d8,$fc,$98,$fc,$98,$fc,$f8
+  DB $fc,$58,$fe,$a8,$ff,$fa,$ff,$fa
+  DB $ff,$fa,$7e,$b8,$bc,$18,$18,$00
+
+  ; frame 2
+  DB $03,$00,$0c,$03,$10,$0f,$11,$0f ; sprite 0
+  DB $23,$1d,$27,$19,$27,$19,$61,$1f
+  DB $ab,$55,$a5,$5a,$a1,$5f,$61,$1f
+  DB $21,$1f,$20,$1f,$26,$19,$19,$00
+  DB $c0,$00,$30,$c0,$f8,$f0,$f8,$f0 ; sprite 1
+  DB $fc,$d8,$fc,$98,$fc,$98,$fe,$f8
+  DB $ff,$5a,$ff,$aa,$ff,$fa,$fe,$f8
+  DB $fc,$f8,$fc,$f8,$7c,$98,$98,$00
+
+  ; frame 3
+  DB $03,$00,$0c,$03,$10,$0f,$11,$0f ; sprite 0
+  DB $23,$1d,$27,$19,$27,$19,$21,$1f
+  DB $2b,$15,$65,$1a,$a1,$5f,$a1,$5f
+  DB $a0,$5f,$62,$1d,$25,$18,$18,$00
+  DB $c0,$00,$30,$c0,$f8,$f0,$f8,$f0 ; sprite 1
+  DB $fc,$d8,$fe,$98,$ff,$9a,$ff,$fa
+  DB $ff,$5a,$fe,$a8,$fc,$f8,$fc,$f8
+  DB $fc,$d8,$58,$80,$80,$00,$00,$00
 
 bg:
   ; define one map's worth:
