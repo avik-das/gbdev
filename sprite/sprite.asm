@@ -32,6 +32,9 @@
 PAD    EQU $c000
 OLDPAD EQU $c000+1
 
+MOVED  EQU $c000+2 ; whether or not the player has moved
+ANIFRM EQU $c000+3 ; the current frame of animation
+
   ; = INTERRUPT HANDLERS ==============================================
 
   ; These are simple interrupt handlers that simply call the actual
@@ -172,6 +175,8 @@ init:
   ld a,0
   ld [   PAD],a
   ld [OLDPAD],a
+  ld [ MOVED],a
+  ld [ANIFRM],a
 
   ; = MAIN LOOP =======================================================
 
@@ -191,6 +196,7 @@ vblank:
   ; TODO: this should be done in the main loop, and the data should be
   ;       copied during V-Blank.
   call react_to_input
+  call animate_sprite
   reti
 
   ; = MAIN LOOP FUNCTIONS =============================================
@@ -242,6 +248,9 @@ read_joypad:
   ret
 
 react_to_input:
+  ld  a,0
+  ld  [MOVED],a ; hasn't moved
+
   ld  a,[PAD]
   bit 4,a
   jp  z,.move_left
@@ -255,6 +264,9 @@ react_to_input:
   ld  a,[$fe05]
   add 2
   ld  [$fe05],a
+
+  ld  a,1
+  ld  [MOVED],a ; has moved
 
 .move_left :
   ld  a,[PAD]
@@ -271,6 +283,9 @@ react_to_input:
   sub 2
   ld  [$fe05],a
 
+  ld  a,1
+  ld  [MOVED],a ; has moved
+
 .move_up   :
   ld  a,[PAD]
   bit 6,a
@@ -286,6 +301,9 @@ react_to_input:
   sub 2
   ld  [$fe04],a
 
+  ld  a,1
+  ld  [MOVED],a ; has moved
+
 .move_down :
   ld  a,[PAD]
   bit 7,a
@@ -300,6 +318,9 @@ react_to_input:
   ld  a,[$fe04]
   add 2
   ld  [$fe04],a
+
+  ld  a,1
+  ld  [MOVED],a ; has moved
 
 .switch_palette:
   ld  a,[PAD]
@@ -350,6 +371,32 @@ react_to_input:
   ld  [$fe07],a
 
 .move_return
+  ret
+
+animate_sprite:
+  ld  a,[ANIFRM]
+  cp  0
+  jp  nz,.inc_anifrm
+  ld  a,[ MOVED]
+  cp  0
+  jp  nz,.inc_anifrm
+  jp  .ani_return
+.inc_anifrm:
+  ld  a,[ANIFRM]
+  inc a
+  and %00111111
+  ld  [ANIFRM],a
+  ld  a,[ANIFRM]
+  and %00001111
+  jp  nz,.ani_return
+  ld  a,[$fe02]
+  add 4
+  and %00001111
+  ld  [$fe02],a
+  add 2
+  and %00001111
+  ld  [$fe06],a
+.ani_return:
   ret
 
   ; = UTILITY FUNCTIONS ===============================================
