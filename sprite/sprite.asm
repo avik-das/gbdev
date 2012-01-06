@@ -156,10 +156,12 @@ init:
   call memcpy
 
   ; display the sprites on the screen by populating the Object
-  ; Attribute Memory (OAM)
-  ld a,16 ; y-coordinate
+  ; Attribute Memory (OAM). Note that the actual Y-coordinate on the
+  ; screen is the stored coordinate minus 16, and the actual X-
+  ; coordinate is the stored coordinate minus 8.
+  ld a,80 ; y-coordinate
   ld [PLAYER],a
-  ld a, 8 ; x-coordinate
+  ld a,80 ; x-coordinate
   ld [PLAYER+1],a
   ld a, 0 ; pattern number
   ld [PLAYER+2],a
@@ -170,9 +172,9 @@ init:
                  ; 4 LSB ignored
   ld [PLAYER+3],a
 
-  ld a,16 ; y-coordinate
+  ld a,80 ; y-coordinate
   ld [PLAYER+4],a
-  ld a,16 ; x-coordinate
+  ld a,88 ; x-coordinate
   ld [PLAYER+5],a
   ld a, 2 ; pattern number
   ld [PLAYER+6],a
