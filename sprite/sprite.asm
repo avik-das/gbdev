@@ -212,9 +212,13 @@ init:
   call memcpy
 
   ; start the timer
-  ld a,-128
+  ; The timer will be incremented 4096 times each second, and each time
+  ; it overflows, it will be reset to 0. This means that the timer will
+  ; overflow every (1/4096) * 256 = 0.0625s.
+  ld a,0         ; the value of rTIMA after it overflows
   ld [$ff06],a
-  ld a,%00000100
+  ld a,%00000100 ; enable the timer
+                 ; increment rTIMA at 4096Hz
   ld [$ff07],a
 
   ; = MAIN LOOP =======================================================
