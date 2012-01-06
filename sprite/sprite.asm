@@ -35,6 +35,13 @@ OLDPAD EQU $c000+1
 MOVED  EQU $c000+2 ; whether or not the player has moved
 ANIFRM EQU $c000+3 ; the current frame of animation
 
+  ; Instead of directly manipulating values in the OAM during V-Blank,
+  ; we store a copy of the OAM. Then, we can alter this copy at any
+  ; time, not just during V-Blank, and when the OAM is indeed
+  ; available, we initiate a DMA transfer from the copy to the OAM.
+OAMBUF EQU $df00  ; allocate the last page in RAM for the copy
+PLAYER EQU OAMBUF ; the player starts at the first sprite
+
   ; = INTERRUPT HANDLERS ==============================================
 
   ; These are simple interrupt handlers that simply call the actual
@@ -118,8 +125,8 @@ init:
   ld b,4
   call memcpy
 
-  ; zero out the OAM
-  ld de,$fe00
+  ; zero out the OAM buffer
+  ld de,OAMBUF
   ld b,255
   call zeromem
   ld b,1
@@ -136,30 +143,30 @@ init:
   ; display the sprites on the screen by populating the Object
   ; Attribute Memory (OAM)
   ld a,16 ; y-coordinate
-  ld [$FE00],a
+  ld [PLAYER],a
   ld a, 8 ; x-coordinate
-  ld [$FE01],a
+  ld [PLAYER+1],a
   ld a, 0 ; pattern number
-  ld [$FE02],a
+  ld [PLAYER+2],a
   ld a,%00000000 ; priority: on top of background
                  ; no y-flip
                  ; no x-flip
                  ; palette 0
                  ; 4 LSB ignored
-  ld [$FE03],a
+  ld [PLAYER+3],a
 
   ld a,16 ; y-coordinate
-  ld [$FE04],a
+  ld [PLAYER+4],a
   ld a,16 ; x-coordinate
-  ld [$FE05],a
+  ld [PLAYER+5],a
   ld a, 2 ; pattern number
-  ld [$FE06],a
+  ld [PLAYER+6],a
   ld a,%00000000 ; priority: on top of background
                  ; no y-flip
                  ; no x-flip
                  ; palette 0
                  ; 4 LSB ignored
-  ld [$FE07],a
+  ld [PLAYER+7],a
 
   ld a,%10000111 ; LCD on
                  ; Window Tile Map at $9800-9bff (not important)
@@ -178,6 +185,12 @@ init:
   ld [ MOVED],a
   ld [ANIFRM],a
 
+  ; copy the sprite DMA procedure into HRAM
+  ld hl,sprite_dma
+  ld de,hram_sprite_dma
+  ld b,sprite_dma_end-sprite_dma
+  call memcpy
+
   ; = MAIN LOOP =======================================================
 
   ld a,%00000001 ; enable V-Blank interrupt
@@ -188,15 +201,17 @@ loop:
   halt
   nop
   call read_joypad
+  call react_to_input
+  call animate_sprite
   jr   loop
 
   ; = INTERRUPT HANDLERS ==============================================
 
 vblank:
-  ; TODO: this should be done in the main loop, and the data should be
-  ;       copied during V-Blank.
-  call react_to_input
-  call animate_sprite
+  ; Note that the DMA procedure must be initiated from High RAM. The
+  ; mechanism for that is detailed alongside the definition of this
+  ; initiation procedure.
+  call hram_sprite_dma
   reti
 
   ; = MAIN LOOP FUNCTIONS =============================================
@@ -255,15 +270,15 @@ react_to_input:
   bit 4,a
   jp  z,.move_left
 
-  ld  a,[$fe01]
+  ld  a,[PLAYER+1]
   cp  152
   jp  z,.move_left
 
   add 2
-  ld  [$fe01],a
-  ld  a,[$fe05]
+  ld  [PLAYER+1],a
+  ld  a,[PLAYER+5]
   add 2
-  ld  [$fe05],a
+  ld  [PLAYER+5],a
 
   ld  a,1
   ld  [MOVED],a ; has moved
@@ -273,15 +288,15 @@ react_to_input:
   bit 5,a
   jp  z,.move_up
 
-  ld  a,[$fe01]
+  ld  a,[PLAYER+1]
   cp  8
   jp  z,.move_up
 
   sub 2
-  ld  [$fe01],a
-  ld  a,[$fe05]
+  ld  [PLAYER+1],a
+  ld  a,[PLAYER+5]
   sub 2
-  ld  [$fe05],a
+  ld  [PLAYER+5],a
 
   ld  a,1
   ld  [MOVED],a ; has moved
@@ -291,15 +306,15 @@ react_to_input:
   bit 6,a
   jp  z,.move_down
 
-  ld  a,[$fe00]
+  ld  a,[PLAYER]
   cp  16
   jp  z,.move_down
 
   sub 2
-  ld  [$fe00],a
-  ld  a,[$fe04]
+  ld  [PLAYER],a
+  ld  a,[PLAYER+4]
   sub 2
-  ld  [$fe04],a
+  ld  [PLAYER+4],a
 
   ld  a,1
   ld  [MOVED],a ; has moved
@@ -309,15 +324,15 @@ react_to_input:
   bit 7,a
   jp  z,.switch_palette
 
-  ld  a,[$fe00]
+  ld  a,[PLAYER]
   cp  144
   jp  z,.switch_palette
 
   add 2
-  ld  [$fe00],a
-  ld  a,[$fe04]
+  ld  [PLAYER],a
+  ld  a,[PLAYER+4]
   add 2
-  ld  [$fe04],a
+  ld  [PLAYER+4],a
 
   ld  a,1
   ld  [MOVED],a ; has moved
@@ -331,12 +346,12 @@ react_to_input:
   bit 0,a
   jp  nz,.flip_sprite ; only switch palettes if A wasn't pressed before
 
-  ld  a,[$fe03]
+  ld  a,[PLAYER+3]
   xor %00010000
-  ld  [$fe03],a
-  ld  a,[$fe07]
+  ld  [PLAYER+3],a
+  ld  a,[PLAYER+7]
   xor %00010000
-  ld  [$fe07],a
+  ld  [PLAYER+7],a
 
 .flip_sprite:
   ld  a,[PAD]
@@ -347,12 +362,12 @@ react_to_input:
   bit 1,a
   jp  nz,.switch_bg_prio ; only flip if B wasn't pressed before
 
-  ld  a,[$fe03]
+  ld  a,[PLAYER+3]
   xor %01000000
-  ld  [$fe03],a
-  ld  a,[$fe07]
+  ld  [PLAYER+3],a
+  ld  a,[PLAYER+7]
   xor %01000000
-  ld  [$fe07],a
+  ld  [PLAYER+7],a
 
 .switch_bg_prio:
   ld  a,[PAD]
@@ -363,12 +378,12 @@ react_to_input:
   bit 2,a
   jp  nz,.move_return ; only switch if SEL wasn't pressed before
 
-  ld  a,[$fe03]
+  ld  a,[PLAYER+3]
   xor %10000000
-  ld  [$fe03],a
-  ld  a,[$fe07]
+  ld  [PLAYER+3],a
+  ld  a,[PLAYER+7]
   xor %10000000
-  ld  [$fe07],a
+  ld  [PLAYER+7],a
 
 .move_return
   ret
@@ -389,13 +404,13 @@ animate_sprite:
   ld  a,[ANIFRM]
   and %00001111
   jp  nz,.ani_return
-  ld  a,[$fe02]
+  ld  a,[PLAYER+2]
   add 4
   and %00001111
-  ld  [$fe02],a
+  ld  [PLAYER+2],a
   add 2
   and %00001111
-  ld  [$fe06],a
+  ld  [PLAYER+6],a
 .ani_return:
   ret
 
@@ -450,6 +465,33 @@ wait_vblank:
   ld  [$ff40],a ; write the new value back to the LCD Control register
 
   ret ; and done...
+
+  ; During the DMA transfer, the CPU can only access the High RAM
+  ; (HRAM), so the transfer must be initiated from inside of HRAM.
+  ; However, we can't directly place this procedure there at assembly
+  ; time, so we'll put it here with the rest of the code, then copy it
+  ; into HRAM at run time.
+sprite_dma:
+  ld  a,OAMBUF/$100
+  ld  [$ff46],a
+  ld  a,$28
+.wait:
+  dec a
+  jr  nz,.wait
+  ret
+sprite_dma_end:
+
+  ; We'll set aside some space in HRAM, but we'll have to store the
+  ; actual data here at run time.
+PUSHS
+SECTION "HRAM",HRAM
+
+ ; This is the procedure that will actually be called to initiate the
+ ; DMA transfer.
+hram_sprite_dma:
+  DS sprite_dma_end-sprite_dma
+
+POPS
 
   ; = DATA ============================================================
 
