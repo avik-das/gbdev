@@ -1,4 +1,4 @@
-; sprite.agb - Avik Das
+; sprite.asm - Avik Das
 ;
 ; A very simple demo, based on the Game Boy Programming Tutorial by
 ; David Pello available at
