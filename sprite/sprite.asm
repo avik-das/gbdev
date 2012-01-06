@@ -17,6 +17,8 @@
   ; used in the program. Typically, we will store data in the internal
   ; RAM, which 8KB to work with.
 
+SECTION "RAM",BSS[$c000]
+
   ; The buttons that are joypad pressed on the joypad. The fields are
   ; as follows:
   ;   bit 7: down
@@ -29,17 +31,16 @@
   ;   bit 0: A
   ; When a bit is set, the corresponding button is pressed. This
   ; structure is updated by read_joypad.
-PAD    EQU $c000
-OLDPAD EQU $c000+1
+PAD   : DB
+OLDPAD: DB
 
-MOVED  EQU $c000+2 ; whether or not the player has moved
-ANIFRM EQU $c000+3 ; the current frame of animation
+MOVED : DB ; whether or not the player has moved
+ANIFRM: DB ; the current frame of animation
 
-WNDWON EQU $c000+4 ; whether or not the window is visible
+WNDWON: DB ; whether or not the window is visible
+BGSCRL: DB ; amount to scroll the background by
 
-BGSCRL EQU $c000+5 ; amount to scroll the background by
-
-VBFLAG EQU $c000+6 ; whether or not we are in V-Blank
+VBFLAG: DB ; whether or not we are in V-Blank
 
   ; Instead of directly manipulating values in the OAM during V-Blank,
   ; we store a copy of the OAM. Then, we can alter this copy at any
