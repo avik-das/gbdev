@@ -37,6 +37,10 @@ ANIFRM EQU $c000+3 ; the current frame of animation
 
 WNDWON EQU $c000+4 ; whether or not the window is visible
 
+BGSCRL EQU $c000+5 ; amount to scroll the background by
+
+VBFLAG EQU $c000+6 ; whether or not we are in V-Blank
+
   ; Instead of directly manipulating values in the OAM during V-Blank,
   ; we store a copy of the OAM. Then, we can alter this copy at any
   ; time, not just during V-Blank, and when the OAM is indeed
@@ -53,6 +57,10 @@ PLAYER EQU OAMBUF ; the player starts at the first sprite
 SECTION "vblank",HOME[$40]
   nop
   jp    vblank
+
+SECTION "timer" ,HOME[$50]
+  nop
+  jp    timer
 
 SECTION "start",HOME[$100]
   nop
@@ -102,8 +110,9 @@ init:
 
   ; reset the screen position
   ld a,0
-  ld [$ff42],a ; set scrolly = 0
-  ld [$ff43],a ; set scrollx = 0
+  ld [$ff43],a ; scrollx will always be 0
+  ld [BGSCRL],a
+  call scroll_bg
 
   ; load the background tiles into the Tile Data Table
   ld hl,cloud  ; source address
@@ -191,6 +200,7 @@ init:
   ld [ MOVED],a
   ld [ANIFRM],a
   ld [WNDWON],a
+  ld [VBFLAG],a
 
   ; copy the sprite DMA procedure into HRAM
   ld hl,sprite_dma
@@ -198,15 +208,29 @@ init:
   ld bc,sprite_dma_end-sprite_dma
   call memcpy
 
+  ; start the timer
+  ld a,-128
+  ld [$ff06],a
+  ld a,%00000100
+  ld [$ff07],a
+
   ; = MAIN LOOP =======================================================
 
-  ld a,%00000001 ; enable V-Blank interrupt
+  ld a,%00000101 ; enable V-Blank interrupt
+                 ; enable timer   interrupt
   ld [$ffff],a
   ei
 
 loop:
   halt
   nop
+
+  ld   a,[VBFLAG]
+  or   0
+  jr   z,loop
+  ld   a,0
+  ld   [VBFLAG],a
+
   call read_joypad
   call react_to_input
   call animate_sprite
@@ -215,11 +239,42 @@ loop:
   ; = INTERRUPT HANDLERS ==============================================
 
 vblank:
+  push af
+  push bc
+  push de
+  push hl
+
   ; Note that the DMA procedure must be initiated from High RAM. The
   ; mechanism for that is detailed alongside the definition of this
   ; initiation procedure.
   call hram_sprite_dma
   call show_window
+  call scroll_bg
+
+  ld   a,1
+  ld   [VBFLAG],a
+
+  pop  hl
+  pop  de
+  pop  bc
+  pop  af
+  reti
+
+timer:
+  push af
+  push bc
+  push de
+  push hl
+
+  ld  a,[BGSCRL]
+  inc a
+  ld  [BGSCRL],a
+
+.done:
+  pop  hl
+  pop  de
+  pop  bc
+  pop  af
   reti
 
   ; = MAIN LOOP FUNCTIONS =============================================
@@ -521,6 +576,11 @@ show_window:
   ld  [$ff47],a
 
 .done:
+  ret
+
+scroll_bg:
+  ld a,[BGSCRL]
+  ld [$ff42],a ; set scrolly
   ret
 
   ; During the DMA transfer, the CPU can only access the High RAM
