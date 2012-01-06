@@ -106,38 +106,24 @@ init:
   ; load the background tiles into the Tile Data Table
   ld hl,cloud  ; source address
   ld de,$8800  ; destination address
-  ld b,96      ; number of bytes to copy
+  ld bc,96     ; number of bytes to copy
   call memcpy
 
-  ; load background into Background Tile Map, all 1024 bytes.
-  ; the 8-bit counter can't hold 1024, so we have to perform the copy
-  ; over multiple calls.
+  ; load background into Background Tile Map
   ld hl,bg
   ld de,$9800
-  ld b,255
-  call memcpy
-  ld b,255
-  call memcpy
-  ld b,255
-  call memcpy
-  ld b,255
-  call memcpy
-  ld b,4
+  ld bc,1024
   call memcpy
 
   ; zero out the OAM buffer
   ld de,OAMBUF
-  ld b,255
-  call zeromem
-  ld b,1
+  ld bc,256
   call zeromem
 
   ; load the sprite tiles into the Sprite Pattern Table
   ld hl,ghost ; source address
   ld de,$8000 ; destination address
-  ld b,255    ; number of bytes to copy
-  call memcpy
-  ld b,1
+  ld bc,256   ; number of bytes to copy
   call memcpy
 
   ; display the sprites on the screen by populating the Object
@@ -188,7 +174,7 @@ init:
   ; copy the sprite DMA procedure into HRAM
   ld hl,sprite_dma
   ld de,hram_sprite_dma
-  ld b,sprite_dma_end-sprite_dma
+  ld bc,sprite_dma_end-sprite_dma
   call memcpy
 
   ; = MAIN LOOP =======================================================
@@ -420,29 +406,43 @@ memcpy:
   ; parameters:
   ;   hl = source address
   ;   de = destination address
-  ;   b  = number of bytes to copy
+  ;   bc = number of bytes to copy
   ; assumes:
-  ;   b  > 0
+  ;   bc > 0
   ld a,[hl] ; load a byte from the source
   ld [de],a ; store it in the destination
   inc hl    ; prepare to load another byte...
   inc de    ; ...and prepare to write it
-  dec b     ; decrement the counter
+
+  ; Now we'll decrement the counter and check if it's zero.
+  ; Unfortunately, when a 16-bit register is decremented, the zero flag
+  ; is not updated, so we need to check if the counter is zero manually.
+  ; A 16-bit value is zero when its constituent 8-bit portions are both
+  ; zero, that is when (b | c) == 0, where "|" is a bitwise OR.
+  dec bc    ; decrement the counter
+  ld  a,b
+  or  c
   ret z     ; return if all bytes written
+
   jr memcpy
 
 zeromem:
     ; parameters
     ;   de = destination address
-    ;   b  = number of bytes to zero out
+    ;   bc = number of bytes to zero out
     ; assumes:
-    ;   b  > 0
-  ld a,$0   ; we will only be writing zeros
+    ;   bc > 0
 .zeromem_loop:
+  ld a,0   ; we will only be writing zeros
   ld [de],a ; store one byte in the destination
   inc de    ; prepare to write another byte
-  dec b     ; decrement the counter
+
+  ; the same caveat applies as in memcpy
+  dec bc    ; decrement the counter
+  ld  a,b
+  or  c
   ret z     ; return if all bytes written
+
   jr .zeromem_loop
 
 lcd_off:
