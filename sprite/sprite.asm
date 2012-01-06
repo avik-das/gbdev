@@ -35,6 +35,8 @@ OLDPAD EQU $c000+1
 MOVED  EQU $c000+2 ; whether or not the player has moved
 ANIFRM EQU $c000+3 ; the current frame of animation
 
+WNDWON EQU $c000+4 ; whether or not the window is visible
+
   ; Instead of directly manipulating values in the OAM during V-Blank,
   ; we store a copy of the OAM. Then, we can alter this copy at any
   ; time, not just during V-Blank, and when the OAM is indeed
@@ -86,9 +88,9 @@ start:
 init:
   call lcd_off
 
-  ; load the background palette
-  ld a,[bgpal] ; load the background palette data
-  ld [$ff47],a ; and store it into the background palette register
+  ; no need to load a background palette now because every V-Blank, the
+  ; background palette is reset to the appropriate palette depending on
+  ; whether or not the window is visible
 
   ; load the object palette 0
   ld a,[sppal] ; load the object palette 0 data
@@ -109,11 +111,27 @@ init:
   ld bc,96     ; number of bytes to copy
   call memcpy
 
+  ; don't forget to load the window tiles, which will be placed right
+  ; after the background tiles, since the background and the window
+  ; share the same Tile Data Table
+  ld hl,stripe ; source address, destination address is retained from
+  ld bc,16     ; the previous call to memcpy
+  call memcpy
+
   ; load background into Background Tile Map
   ld hl,bg
   ld de,$9800
   ld bc,1024
   call memcpy
+
+  ; load window into the Window Tile Map
+  ld hl,window
+  ld de,$9c00
+  ld bc,1024
+  call memcpy
+
+  ld a,63
+  ld [$ff4a],a
 
   ; zero out the OAM buffer
   ld de,OAMBUF
@@ -154,9 +172,9 @@ init:
                  ; 4 LSB ignored
   ld [PLAYER+7],a
 
-  ld a,%10000111 ; LCD on
-                 ; Window Tile Map at $9800-9bff (not important)
-                 ; window off
+  ld a,%11000111 ; LCD on
+                 ; Window Tile Map at $9800-9fff
+                 ; window off (for now)
                  ; BG & window Tile Data at $8800-$97ff
                  ; BG Tile Map at $9800-$9bff
                  ; sprite size 8x16
@@ -170,6 +188,7 @@ init:
   ld [OLDPAD],a
   ld [ MOVED],a
   ld [ANIFRM],a
+  ld [WNDWON],a
 
   ; copy the sprite DMA procedure into HRAM
   ld hl,sprite_dma
@@ -198,6 +217,7 @@ vblank:
   ; mechanism for that is detailed alongside the definition of this
   ; initiation procedure.
   call hram_sprite_dma
+  call show_window
   reti
 
   ; = MAIN LOOP FUNCTIONS =============================================
@@ -358,11 +378,11 @@ react_to_input:
 .switch_bg_prio:
   ld  a,[PAD]
   bit 2,a
-  jp  z,.move_return
+  jp  z,.toggle_window
 
   ld  a,[OLDPAD]
   bit 2,a
-  jp  nz,.move_return ; only switch if SEL wasn't pressed before
+  jp  nz,.toggle_window ; only switch if SEL wasn't pressed before
 
   ld  a,[PLAYER+3]
   xor %10000000
@@ -370,6 +390,19 @@ react_to_input:
   ld  a,[PLAYER+7]
   xor %10000000
   ld  [PLAYER+7],a
+
+.toggle_window:
+  ld  a,[PAD]
+  bit 3,a
+  jp  z,.move_return
+
+  ld  a,[OLDPAD]
+  bit 3,a
+  jp  nz,.move_return ; only toggle if START wasn't pressed before
+
+  ld  a,[WNDWON]
+  xor 1
+  ld  [WNDWON],a
 
 .move_return
   ret
@@ -466,6 +499,28 @@ wait_vblank:
 
   ret ; and done...
 
+show_window:
+  ld  a,[WNDWON]
+  cp  0
+  jp  z,.hide
+
+  ld  a,[$ff40]
+  set 5,a       ; set the window visibility bit of LCDC
+  ld  [$ff40],a
+  ld  a,[wnpal] ; use the correct palette for the window
+  ld  [$ff47],a
+  jp  .done
+
+.hide:
+  ld  a,[$ff40]
+  res 5,a       ; clear the window visibility bit of LCDC
+  ld  [$ff40],a
+  ld  a,[bgpal] ; use the correct palette for the background
+  ld  [$ff47],a
+
+.done:
+  ret
+
   ; During the DMA transfer, the CPU can only access the High RAM
   ; (HRAM), so the transfer must be initiated from inside of HRAM.
   ; However, we can't directly place this procedure there at assembly
@@ -499,6 +554,9 @@ bgpal:
   DB %00000100 ; white is transparent, with another non-transparent
                ; white. The only other important color is the second-
                ; lightest color.
+wnpal:
+  DB %00011001 ; light gray is transparent, with the only non-
+               ; transparent color being dark gray.
 
 sppal:
   DB %00011100 ; missing second darkest
@@ -518,6 +576,11 @@ cloud:
   DB $08,$f7,$00,$ff,$ff,$00,$00,$00
   DB $88,$70,$08,$f0,$a4,$58,$04,$f8 ; tile 5
   DB $04,$f8,$08,$f0,$f0,$00,$00,$00
+
+stripe:
+  ; window stripe, 1x1 tile
+  DB $83,$00,$07,$00,$0e,$00,$1c,$00
+  DB $38,$00,$70,$00,$e0,$00,$c1,$00
 
 ghost:
   ; foreground ghost
@@ -639,5 +702,72 @@ bg:
   DB $81,$82,$80,$81,$82,$80,$81,$82,$80,$81,$82,$80,$81,$82,$80,$81
   DB $83,$84,$85,$83,$84,$85,$83,$84,$85,$83,$84,$85,$83,$84,$85,$83
   DB $84,$85,$83,$84,$85,$83,$84,$85,$83,$84,$85,$83,$84,$85,$83,$84
+
+window:
+  ; define one map's worth, again 1024 tiles = 64 lines
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+  DB $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
 
 ; vim: ft=rgbasm:tw=72:ts=2:sw=2
