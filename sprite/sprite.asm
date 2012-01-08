@@ -36,6 +36,7 @@ OLDPAD: DB
 
 MOVED : DB ; whether or not the player has moved
 ANIFRM: DB ; the current frame of animation
+MUSCNT: DB ; the current "beat" in the tempo
 
 WNDWON: DB ; whether or not the window is visible
 BGSCRL: DB ; amount to scroll the background by
@@ -202,6 +203,7 @@ init:
   ld [OLDPAD],a
   ld [ MOVED],a
   ld [ANIFRM],a
+  ld [MUSCNT],a
   ld [WNDWON],a
   ld [VBFLAG],a
 
@@ -210,6 +212,8 @@ init:
   ld de,hram_sprite_dma
   ld bc,sprite_dma_end-sprite_dma
   call memcpy
+
+  call init_sound
 
   ; start the timer
   ; The timer will be incremented 4096 times each second, and each time
@@ -243,6 +247,44 @@ loop:
   call animate_sprite
   jr   loop
 
+  ; = INITIALIZATION FUNCTIONS ========================================
+
+init_sound:
+  ld a,%10000000 ; all sound on
+  ld [$ff26],a   ; write to rAUDENA (rNR52)
+
+  ; There are two output terminals, SO1 and SO2, both of which are the
+  ; result of mixing the four sound channels. We will set both of the
+  ; output volumes to %111, the highest. Additionally, the game catridge
+  ; can supply a fifth channel via Vin, which can be mixed into SO1
+  ; and/or SO2, but this is not typically used. We will disable this.
+  ld a,%01110111 ; SO1 and SO2 both have volume %111
+                 ; Vin is not mixed into either SO1 or SO2
+  ld [$ff24],a   ; write to rAUDVOL (rNR50)
+
+  ld a,%00100010 ; output channel 2 to both SO1 and SO2
+  ld [$ff25],a   ; write to rAUDTERM (rNR51)
+
+  ; configure channel 2
+  ; First, we set the duty cycle and the length. The length is
+  ; calculated as (64-t1)*(1/256) seconds, where t1 consists of the
+  ; lower 6 bits of the value we will write. Additionally, we will set
+  ; a duty cycle of 50%, which is the default.
+  ld a,%10111111
+  ld [$ff16],a   ; write to rAUD2LEN (rNR21)
+
+  ; Next, we configure the envelope, which is used to modulate the
+  ; amplitude of the signal. We start at the maximum volume, then
+  ; attenuate for a length of n=7. The actual length of the decay is
+  ; calculated by n*(1/64) seconds.
+  ld a,%11110111
+  ld [$ff17],a   ; write to rAUD2ENV (rNR22)
+
+  ; Now, all that's left is to write the actual frequency data to the
+  ; channel, but we will do that, when we are ready to play the sound.
+
+  ret
+
   ; = INTERRUPT HANDLERS ==============================================
 
 vblank:
@@ -273,11 +315,12 @@ timer:
   push de
   push hl
 
-  ld  a,[BGSCRL]
-  inc a
-  ld  [BGSCRL],a
+  ld   a,[BGSCRL]
+  inc  a
+  ld   [BGSCRL],a
 
-.done:
+  call play_note
+
   pop  hl
   pop  de
   pop  bc
@@ -590,6 +633,65 @@ scroll_bg:
   ld [$ff42],a ; set scrolly
   ret
 
+play_note:
+  ; There are 8 notes, and each note and its corresponding silence,
+  ; lasts for 8 counts. Thus, we overflow the counter after %111111,
+  ; and use the upper three bits to index the sequence of notes in
+  ; memory.
+  ld  a,[MUSCNT]
+  inc a
+  and %00111111
+  ld  [MUSCNT],a
+
+  and %00000111
+  jr   nz,.done ; only play a note on a beat
+
+  ; Now that we know we're on a beat, we can decide which note to play.
+  ; First, we extract the upper three bits of the counter. We should
+  ; shift the extracted value left by three bits, but a sound takes up
+  ; two bytes in memory, so we would need to shift it right by one bit.
+  ld  a,[MUSCNT]
+  and %00111000
+  srl a
+  srl a         ; this gives us the offset, in bytes, to the data
+
+  ; Next, we compute the actual address of the note in memory by adding
+  ; the base address ("notes") to the offset computed above.
+
+  ; The computation is as follows: we load the offset into bc by loading
+  ; the 8-bit value above into c, and clearing b. Then, we load the base
+  ; address into hl, and perform a 16-bit addition.
+  ld  c,a
+  ld  b,0
+  ld  hl,notes
+  add hl,bc     ; this is the address of the first byte of data
+
+  ; The actual data consists of an 11-bit frequency (tone) spread over
+  ; two bytes. The value used by the GB hardware is computed as follows:
+  ;
+  ;   x = 2048 - 131072/F
+  ;
+  ; where F is the frequency in Hz, and x is 11-bit tone that will be
+  ; written to the appropriate registers.
+
+  ; The first byte of data contains the lower 8 bits of the above tone,
+  ; and it is written directly to rAUD2LOW (rNR23).
+  ld  a,[hl]
+  ld  [$ff18],a
+
+  ; The next byte of data contains the remaining 3 upper bits of the
+  ; above tone in bits 0-2. Additionally, we must set bit 7 in order to
+  ; cause the sound to play and set bit 6 in order for rAUD2LEN to be
+  ; honored (otherwise the sound would play continuously). Finally, this
+  ; entire value is written to rAUD2HIGH (rNR24).
+  inc hl
+  ld  a,[hl]
+  or  %11000000
+  ld  [$ff19],a
+
+.done:
+  ret
+
   ; During the DMA transfer, the CPU can only access the High RAM
   ; (HRAM), so the transfer must be initiated from inside of HRAM.
   ; However, we can't directly place this procedure there at assembly
@@ -842,5 +944,12 @@ window:
   DB $87,$88,$86,$87,$88,$86,$87,$88,$86,$87,$88,$86,$87,$88,$86,$87
   DB $86,$87,$88,$86,$87,$88,$86,$87,$88,$86,$87,$88,$86,$87,$88,$86
   DB $87,$88,$86,$87,$88,$86,$87,$88,$86,$87,$88,$86,$87,$88,$86,$87
+
+notes:
+  ; The octave starting with A4 (440 Hz). Each pair of bytes contains
+  ; the lower eight bits of the eleven-bit frequency followed by the
+  ; lower three bits.
+  DB $d6,$06,$ef,$06,$06,$07,$1a,$07
+  DB $2d,$07,$3f,$07,$4f,$07,$5e,$07
 
 ; vim: ft=rgbasm:tw=72:ts=2:sw=2
