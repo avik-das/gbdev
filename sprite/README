@@ -56,6 +56,8 @@ program:
 * Playback of sound. A full octave of notes is played back using the
   second sound channel. This demonstrates how sounds are specified in
   the program, as well as configuration of the sound system.
+  Additionally, white noise is also played, further demonstrating
+  another feature of the GB sound system.
 
 * Reaction to user input. Demonstrates the use of the pertinent
   register.
