@@ -1,0 +1,125 @@
+== SPRITE - Avik Das ==================================================
+
+A simple test program that demonstrates a wide variety of
+hardware-provided functionality and general programming techniques.
+
+~~ RUNNING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To assemble and run sprite using an emulator like VBA-M:
+
+  make
+  vbam sprite.gb
+
+The following buttons are utilized:
+
+   D-PAD : move the sprite
+       A : switch the sprite palette
+       B : flip sprite vertically
+  SELECT : switch background priority
+  START  : toggle the window layer
+
+~~ FUNCTIONALITY ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The following hardware-provided functionality is demonstrated by this
+program:
+
+* A means of creating an entire Game Boy program, suitable for use with
+  any compliant GB emulator. Assembler directives demonstrate the
+  layout of the various parts of the program, as expected by the
+  hardware.
+
+* "Color" palettes. Multiple palettes are provided, demonstrating how
+  colors are referenced on the Game Boy. The palettes may be switched
+  based on user input.
+
+* Sprite attributes. Both the vertical flip and the background priority
+  may be toggled based on user input.
+
+* Pattern and name tables, used to display a background. The background,
+  which fills the entire screen, is composed of a minimal set of tiles,
+  demonstrating how a complex map may be created from a few tiles. The
+  background is scrolled by the corresponding registers as well.
+
+* Display of a window. The window is placed on top of the background,
+  and effectively acts as a second background that can quickly be
+  toggled on and off.
+
+* Display of sprites. The sprites various attributes are also modified
+  throughout the execution of the program, demonstrating the
+  functionality provided by the PPU.
+
+* DMA transfer. Double buffering of the OAM is provided by altering a
+  copy of the OAM in RAM, which can be done at all times, then
+  initiating a DMA transfer of this data, which must be done during
+  V-Blank.
+
+* Playback of sound. A full octave of notes is played back using the
+  second sound channel. This demonstrates how sounds are specified in
+  the program, as well as configuration of the sound system.
+
+* Reaction to user input. Demonstrates the use of the pertinent
+  register.
+
+* Use of a timer. The timer is used to perform a periodic activity, in
+  this case scrolling the background and play a note.
+
+The following programming techniques are demonstrated by this program:
+
+* Movement of a sprite in response to user input, with the rate of
+  movement controlled to provide a smooth experience for the user.
+
+* Collision detection with the edges of the screen.
+
+* Multi-sprite agent, where a character on screen is composed of
+  smaller, 8x16 tiles, and seamlessly works together. Whenever any
+  attribute of the character is changed, all its constituent sprites
+  must be modified.
+
+* Animation of a sprite involving multiple frames, with a deliberately
+  limited frame-rate, and a rest frame to which the animation terminates
+  if the sprite is not moving. This demonstrates how to limit the
+  frame-rate, as well as how to work with an implicit state machine in
+  order to provide animation.
+
+* Switching of sprite attributes in response to user input. Demonstrates
+  how the sprite attributes are retrieved, modified, and stored back
+  into memory.
+
+* Playback of multiple notes in a specified pattern. Demonstrates the
+  usage of an implicit state machine to limit the rate of playback and
+  to control the notes played back at different times.
+
+* Use of a V-Blank interrupt to reduce the power consumption, as
+  looping until V-Blank would be CPU intensive. Just as importantly,
+  this V-Blank interrupt coexists with the timer interrupt, so a flag
+  is used to ensure that the main loop is not executed an unnecessary
+  number of times per frame.
+
+~~ FURTHER READING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This program serves as my first step into GB development, and as such,
+the credit goes to the wealth of information available online. The
+following resources in particular were crucial. Many of them are
+available via links from Emudocs (http://emu-docs.org).
+
+* Nintendo GameBoy Tutorial de programación, by David Pello. A tutorial
+  written in Spanish that provides numerous examples. Unfortunately, it
+  doesn't cover the use of the V-Blank interrupt, but the sample
+  programs are very thorough.
+
+* Everything You Always Wanted to Know About GAMEBOY (a.k.a Pan Docs),
+  by various authors. Comprehensive documentation of all the hardware,
+  including the Game Boy Color and the Super Game Boy. The
+  aforementioned tutorial takes its information from this document, and
+  in fact translates the information into Spanish.
+
+  Two versions of this document were used, one updated November 2001 and
+  the other March 2008. The latter would have been preferred, but each
+  version is missing some information contained in the other, so both
+  were consulted.
+
+* Gameboy Crib Sheet, V1.1, by Otaku No Zoku. Comprehensive tabulation
+  of the CPU instruction set (including opcodes), memory layout, timing,
+  registers and even musical note frequencies. The perfect reference if
+  you already know the basics and just need to look back at specific
+  information.
