@@ -315,9 +315,8 @@ timer:
   push de
   push hl
 
-  ld   a,[BGSCRL]
-  inc  a
-  ld   [BGSCRL],a
+  ld   hl,BGSCRL
+  inc  [hl]
 
   call play_note
 
