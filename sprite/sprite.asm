@@ -15,7 +15,7 @@
 
   ; Here we set up some locations in memory to store data that will be
   ; used in the program. Typically, we will store data in the internal
-  ; RAM, which 8KB to work with.
+  ; RAM, which gives us 8KB to work with.
 
 SECTION "RAM",BSS[$c000]
 
@@ -586,7 +586,7 @@ zeromem:
     ; assumes:
     ;   bc > 0
 .zeromem_loop:
-  ld a,0   ; we will only be writing zeros
+  ld a,0    ; we will only be writing zeros
   ld [de],a ; store one byte in the destination
   inc de    ; prepare to write another byte
 
