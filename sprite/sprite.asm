@@ -98,17 +98,66 @@ start:
 init:
   call lcd_off
 
+  call init_ram
+  call copy_dma_routine
+
+  call load_bg
+  call load_obj
+  call init_sound
+
+  call lcd_on
+  call start_timer
+
+  ld a,%00000101 ; enable V-Blank interrupt
+                 ; enable timer   interrupt
+  ld [$ffff],a
+  ei
+
+  ; = MAIN LOOP =======================================================
+
+loop:
+  halt
+  nop
+
+  ld   a,[VBFLAG]
+  or   0
+  jr   z,loop
+  ld   a,0
+  ld   [VBFLAG],a
+
+  call read_joypad
+  call react_to_input
+  call animate_sprite
+  jr   loop
+
+  ; = INITIALIZATION FUNCTIONS ========================================
+
+init_ram:
+  ; initialize the RAM variables
+  ld a,0
+  ld [   PAD],a
+  ld [OLDPAD],a
+  ld [ MOVED],a
+  ld [ANIFRM],a
+  ld [MUSCNT],a
+  ld [WNDWON],a
+  ld [VBFLAG],a
+
+  ret
+
+copy_dma_routine:
+  ; copy the sprite DMA procedure into HRAM
+  ld hl,sprite_dma
+  ld de,hram_sprite_dma
+  ld bc,sprite_dma_end-sprite_dma
+  call memcpy
+
+  ret
+
+load_bg:
   ; no need to load a background palette now because every V-Blank, the
   ; background palette is reset to the appropriate palette depending on
   ; whether or not the window is visible
-
-  ; load the object palette 0
-  ld a,[sppal] ; load the object palette 0 data
-  ld [$ff48],a ; and store it into the object palette 0 register
-
-  ; load the object palette 1
-  ld a,[sppal+1] ; load the object palette 1 data
-  ld [$ff49],a   ; and store it into the object palette 1 register
 
   ; reset the screen position
   ld a,0
@@ -141,10 +190,22 @@ init:
   ld bc,1024
   call memcpy
 
-  ld a,0
+  ; offset the window layer
+  ld a,0       ; y offset
   ld [$ff4a],a
-  ld a,88
+  ld a,88      ; x offset
   ld [$ff4b],a
+
+  ret
+
+load_obj:
+  ; load the object palette 0
+  ld a,[sppal] ; load the object palette 0 data
+  ld [$ff48],a ; and store it into the object palette 0 register
+
+  ; load the object palette 1
+  ld a,[sppal+1] ; load the object palette 1 data
+  ld [$ff49],a   ; and store it into the object palette 1 register
 
   ; zero out the OAM buffer
   ld de,OAMBUF
@@ -157,7 +218,7 @@ init:
   ld bc,256   ; number of bytes to copy
   call memcpy
 
-  ; display the sprites on the screen by populating the Object
+  ; Display the sprites on the screen by populating the Object
   ; Attribute Memory (OAM). Note that the actual Y-coordinate on the
   ; screen is the stored coordinate minus 16, and the actual X-
   ; coordinate is the stored coordinate minus 8.
@@ -174,6 +235,7 @@ init:
                  ; 4 LSB ignored
   ld [PLAYER+3],a
 
+  ; our player requires two sprites, so initialize the second one
   ld a,80 ; y-coordinate
   ld [PLAYER+4],a
   ld a,88 ; x-coordinate
@@ -187,67 +249,7 @@ init:
                  ; 4 LSB ignored
   ld [PLAYER+7],a
 
-  ld a,%11000111 ; LCD on
-                 ; Window Tile Map at $9800-9fff
-                 ; window off (for now)
-                 ; BG & window Tile Data at $8800-$97ff
-                 ; BG Tile Map at $9800-$9bff
-                 ; sprite size 8x16
-                 ; sprites on
-                 ; BG & window on
-  ld [$ff40],a   ; write it to the LCD Control register
-
-  ; initialize the RAM variables
-  ld a,0
-  ld [   PAD],a
-  ld [OLDPAD],a
-  ld [ MOVED],a
-  ld [ANIFRM],a
-  ld [MUSCNT],a
-  ld [WNDWON],a
-  ld [VBFLAG],a
-
-  ; copy the sprite DMA procedure into HRAM
-  ld hl,sprite_dma
-  ld de,hram_sprite_dma
-  ld bc,sprite_dma_end-sprite_dma
-  call memcpy
-
-  call init_sound
-
-  ; start the timer
-  ; The timer will be incremented 4096 times each second, and each time
-  ; it overflows, it will be reset to 0. This means that the timer will
-  ; overflow every (1/4096) * 256 = 0.0625s.
-  ld a,0         ; the value of rTIMA after it overflows
-  ld [$ff06],a
-  ld a,%00000100 ; enable the timer
-                 ; increment rTIMA at 4096Hz
-  ld [$ff07],a
-
-  ; = MAIN LOOP =======================================================
-
-  ld a,%00000101 ; enable V-Blank interrupt
-                 ; enable timer   interrupt
-  ld [$ffff],a
-  ei
-
-loop:
-  halt
-  nop
-
-  ld   a,[VBFLAG]
-  or   0
-  jr   z,loop
-  ld   a,0
-  ld   [VBFLAG],a
-
-  call read_joypad
-  call react_to_input
-  call animate_sprite
-  jr   loop
-
-  ; = INITIALIZATION FUNCTIONS ========================================
+  ret
 
 init_sound:
   ld a,%10000000 ; all sound on
@@ -282,6 +284,18 @@ init_sound:
 
   ; Now, all that's left is to write the actual frequency data to the
   ; channel, but we will do that, when we are ready to play the sound.
+
+  ret
+
+start_timer:
+  ; The timer will be incremented 4096 times each second, and each time
+  ; it overflows, it will be reset to 0. This means that the timer will
+  ; overflow every (1/4096) * 256 = 0.0625s.
+  ld a,0         ; the value of rTIMA after it overflows
+  ld [$ff06],a
+  ld a,%00000100 ; enable the timer
+                 ; increment rTIMA at 4096Hz
+  ld [$ff07],a
 
   ret
 
@@ -604,6 +618,19 @@ wait_vblank:
   ld  [$ff40],a ; write the new value back to the LCD Control register
 
   ret ; and done...
+
+lcd_on:
+  ld a,%11000111 ; LCD on
+                 ; Window Tile Map at $9800-9fff
+                 ; window off (for now)
+                 ; BG & window Tile Data at $8800-$97ff
+                 ; BG Tile Map at $9800-$9bff
+                 ; sprite size 8x16
+                 ; sprites on
+                 ; BG & window on
+  ld [$ff40],a   ; write it to the LCD Control register
+
+  ret
 
 show_window:
   ld  a,[WNDWON]
