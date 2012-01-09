@@ -946,10 +946,10 @@ window:
   DB $87,$88,$86,$87,$88,$86,$87,$88,$86,$87,$88,$86,$87,$88,$86,$87
 
 notes:
-  ; The octave starting with A4 (440 Hz). Each pair of bytes contains
+  ; The octave starting with A5 (440 Hz). Each pair of bytes contains
   ; the lower eight bits of the eleven-bit frequency followed by the
   ; lower three bits.
-  DB $d6,$06,$ef,$06,$06,$07,$1a,$07
-  DB $2d,$07,$3f,$07,$4f,$07,$5e,$07
+  DB $d6,$06,$f7,$06,$06,$07,$21,$07
+  DB $39,$07,$44,$07,$59,$07,$6b,$07
 
 ; vim: ft=rgbasm:tw=72:ts=2:sw=2
