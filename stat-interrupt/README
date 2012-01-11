@@ -1,0 +1,33 @@
+== LCDC STATUS INTERRUPT - Avik Das ====================================
+
+A program to demonstrate the use of the LCDC Status interrupt in order
+to achieve some graphical effects that would otherwise be difficult or
+impossible using the video system in the Game Boy.
+
+~~ RUNNING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To assemble and run stat-interrupt using an emulator like VBA-M:
+
+  make
+  vbam stat-interrupt.gb
+
+This program takes no user input.
+
+~~ FUNCTIONALITY ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Each line of the background is scrolled in a sinusoidal pattern, in
+order to display a curved pattern using only a single tile and a sine
+lookup table. This is achieved by using to the LCDC Status interrupt to
+modify the SCX and SCY registers (which scroll the background) a varying
+amount each scanline.
+
+Additionally, there is a window layer, but instead of overlaying a
+contiguous region of the screen, the LYC Coincidence Flag is used to
+hide the window after the top of the window has been rendered, then show
+it again at the bottom of the screen.
+
+~~ FURTHER READING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The LCDC Status register and its corresponding interrupts are detailed
+in the Pan Docs, the canonical Game Boy development resource. A version
+is available via a link from Emudocs (http://emu-docs.org).
