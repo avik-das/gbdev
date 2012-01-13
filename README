@@ -50,3 +50,8 @@ directory containing each program.
 
 sprite - A simple test program that demonstrates a wide variety of
   hardware-provided functionality and general programming techniques.
+
+stat-interrupt - A program to demonstrate the use of the LCDC Status
+  interrupt in order to achieve some graphical effects that would
+  otherwise be difficult or impossible using the video system in the
+  Game Boy.
