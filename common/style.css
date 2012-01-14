@@ -1,0 +1,81 @@
+#container {
+  width : 800px;
+  height: 899px;
+  margin: 1em auto 0;
+
+  background-image: url("cartridge.png");
+}
+
+#contents {
+  position: relative;
+  top : 260px;
+  left: 110px;
+  width : 570px;
+  height: 510px;
+  padding-right: 10px;
+
+  overflow: auto;
+}
+
+body {
+  font-family: monospace;
+  background: black;
+} 
+
+#container h1,
+#container h2,
+#container h3,
+#container h4,
+#container h5,
+#container h6 {
+  font-size: 1em;
+  text-transform: uppercase;
+  font-weight: bold;
+}
+
+#container h1:before { content: "~ "; }
+#container h2:before { content: "~~ "; }
+#container h3:before { content: "~~~ "; }
+#container h4:before { content: "~~~~ "; }
+#container h5:before { content: "~~~~~ "; }
+#container h6:before { content: "~~~~~~ "; }
+#container h1:after  { content: " ~"; }
+#container h2:after  { content: " ~~"; }
+#container h3:after  { content: " ~~~"; }
+#container h4:after  { content: " ~~~~"; }
+#container h5:after  { content: " ~~~~~"; }
+#container h6:after  { content: " ~~~~~~"; }
+
+#container a {
+  color: #bb6100;
+  font-weight: bold;
+  text-decoration: none;
+  border-bottom: 1px dotted;
+}
+
+#container .screenshot {
+  display: block;
+  margin: auto;
+}
+
+#container ul {
+  list-style-type: none;
+  padding-left: 0;
+}
+#container ul li {
+    margin-bottom: 1em;
+}
+#container ul li:before { content: "* "; }
+
+a img {
+  border: none;
+}
+
+pre {
+  background: #ddd;
+  color: #000;
+  padding: 15px;
+  overflow: auto;
+}
+
+.download { float: right; }

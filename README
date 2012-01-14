@@ -1,0 +1,10 @@
+== GB DEVELOPMENT - Avik Das ===========================================
+
+The Github pages corresponding to the GB development project by Avik
+Das: https://github.com/avik-das/gbdev
+
+There is a landing page for the entire project, as well as landing pages
+for each of the sub-projects within this project. In each case, the page
+is laid out like an GB cartridge, using the resources under the common/
+directory. The pages are then customized further, altering properties
+such as background colors.
