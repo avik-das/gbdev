@@ -45,7 +45,7 @@ Additionally, there are some other emulators to note:
   may not be tested extensively on this emulator, but it remains an
   option, and the programs may occasionally be tested on it.
 
-* JS GameBoy Color Game Center (http://www.grantgalitz.org/gamecenter/)
+* JS GameBoy Color Game Center (http://www.grantgalitz.org/gameboy/)
   This emulator runs in the browser using HTML5 and Javascript. The
   programs may not be tested extensively on this, but given that the
   lack of proper checksums caused this emulator to reject older versions
