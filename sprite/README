@@ -102,7 +102,8 @@ The following programming techniques are demonstrated by this program:
 This program serves as my first step into GB development, and as such,
 the credit goes to the wealth of information available online. The
 following resources in particular were crucial. Many of them are
-available via links from Emudocs (http://emu-docs.org).
+available via links from Emudocs (http://emudocs.org/?page=Game%20Boy)
+or the GBdevWiki (http://gbdev.gg8.se/wiki/articles/Main_Page).
 
 * Nintendo GameBoy Tutorial de programación, by David Pello. A tutorial
   written in Spanish that provides numerous examples. Unfortunately, it
