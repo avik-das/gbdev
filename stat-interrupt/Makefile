@@ -12,7 +12,7 @@ OFILES := $(SOURCE:.asm=.obj)
 
 $(TARGET): $(OFILES)
 	$(RGBLNK) -o $(TARGET) $(OFILES)
-	$(RGBFIX) $(TARGET)
+	$(RGBFIX) -p 0 -v $(TARGET)
 
 .PHONY: clean
 clean:
