@@ -86,7 +86,7 @@ SECTION "start",HOME[$100]
   DB $33 ; old licensee code, $33 => check new licensee code
   DB 0   ; mask ROM version number, usually 0
   DB 0   ; complement check. computed by rgbfix. important.
-  DB 0   ; checksum. computed by rgbfix. not important.
+  DW 0   ; checksum. computed by rgbfix. not important.
 
   ; = INITIALIZATION ==================================================
 
