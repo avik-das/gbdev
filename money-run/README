@@ -1,0 +1,18 @@
+== MONEY RUN - Avik Das ===============================================
+
+A simple side-scroller, in which the character is asked to go from left
+to right, navigating over a series procedurally generated columns.
+
+The name is refers to the gameplay mechanic in which the player will be
+trying to collect money while avoiding getting stuck amongst the
+columns.
+
+~~ RUNNING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To assemble and run sprite using an emulator like VBA-M:
+
+  make
+  vbam money-run.gb
+
+Currently, no user input is possible, as this program is in its early
+stages.
