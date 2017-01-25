@@ -16,6 +16,20 @@
 
 SECTION "RAM",BSS[$c000]
 
+  ; The background is 256 pixels wide, with each column taking up 16
+  ; pixels, giving us 16 separate heights to work with.
+  ;
+  ; Now, while the background is also 256 pixels tall, we only see the
+  ; top 144 pixels. Again, with each row taking up 16 pixels, that means
+  ; each height is between 0 and 9. We can allow a single height to take
+  ; 4 bits, i.e. 2 heights per byte. (In reality, we don't allow a
+  ; column to take up the entire screen height, nor allow an empty
+  ; column, so we could get away with 3 bits per column, but that's
+  ; awkward.)
+  ;
+  ; Thus, we need to allocate space for 8 bytes.
+HEIGHTS: DS 8
+
 VBFLAG: DB ; whether or not we are in V-Blank
 
   ; = INTERRUPT HANDLERS ==============================================
@@ -108,13 +122,82 @@ load_bg:
   ld bc,96     ; number of bytes to copy
   call memcpy
 
-  ; load background into Background Tile Map
-  ld hl,bg
-  ld de,$9800
-  ld bc,1024
-  call memcpy
+  call generate_initial_heights
+  call load_all_columns_into_bg_tile_map
 
   ret
+
+generate_initial_heights:
+  ; TODO: in the future, we want to procedurally generate these
+  ; heights, but for now, hard-code them as increasing, then
+  ; decreasing, steps.
+  ;
+  ; When we start doing procedural generation, we'll also need to be
+  ; able to set a single height at a time, but for now, just set them
+  ; all at once.
+  ld hl,HEIGHTS
+
+  ld [hl],$12
+  inc hl
+  ld [hl],$34
+  inc hl
+  ld [hl],$56
+  inc hl
+  ld [hl],$78
+  inc hl
+  ld [hl],$87
+  inc hl
+  ld [hl],$65
+  inc hl
+  ld [hl],$43
+  inc hl
+  ld [hl],$21
+
+  ret
+
+load_all_columns_into_bg_tile_map:
+  ld a,$0
+_load_all_columns_loop:
+  push af
+  call load_column_into_bg_tile_map
+  pop af
+  inc a
+  cp $10
+  jr nz, _load_all_columns_loop
+
+  ret
+
+load_column_into_bg_tile_map:
+  ; parameters:
+  ;   a = the index of the column to load
+  ld d,a        ; save a, because we'll need the original value later
+
+  ld hl,HEIGHTS ; start with the start address of the height map
+  srl a         ; divide the column index by 2, since there are two
+                ; columns per byte
+  ld b,$00      ; bc = $00AA, where AA = index / 2
+  ld c,a
+  add hl,bc     ; actual address = start of height map + $00AA
+
+  ld a,d        ; grab the original index again
+  srl a         ; divide it by 2, which sets the carry flag if the
+                ; index was odd
+  ld a,[hl]     ; grab the two heights from the height map. Loading
+                ; from memory doesn't affect the carry flag, so we'll
+                ; check against the carry flag set by the division.
+  jr c, _load_column_height_done
+  swap a        ; bring the high nibble down if the index was even
+
+_load_column_height_done:
+  and $0f       ; preserve only the low nibble
+  ld b,a        ; save the height in b
+
+  sla d         ; multiply the column index by 2, since in the tile
+                ; map, each column takes up two tiles
+  ld h,$98      ; HL = $98DD, where DD = index * 2
+  ld l,d
+
+  jr load_column_into_bg_tile_map_at_address ; tail call
 
   ; = INTERRUPT HANDLERS ==============================================
 
@@ -122,6 +205,59 @@ vblank:
   reti
 
   ; = UTILITY FUNCTIONS ===============================================
+
+load_column_into_bg_tile_map_at_address:
+  ; parameters:
+  ;   hl = start address of bg tile map
+  ;   b  = number of rows filled with boxes
+  ld a,$9   ; compute the number of rows filled with sky
+  sub b     ;   b = 9 - b
+  ld b,a
+
+  ld d,$00  ; DE = $001f
+  ld e,$1f  ;   the amount to increment HL by each tile row, minus one
+            ;   (so two increments are needed for each logical row).
+            ;   the minus one is because we'll increment by one in
+            ;   order to fill out the left and right sides of the box
+            ;   on each of the top and bottom portions of the box.
+
+  ld c,$0
+_load_column_loop:
+  ld a,c    ; if c == b: load a box tile
+  sub b
+  jr nc, _load_column_box
+
+  ld a,$84  ; otherwise, load a sky tile
+  ld [hl],a ; fill out the top-left
+  inc hl    ; fill out the top-right
+  ld [hl],a
+  add hl,de ; fill out the bottom-left
+  ld [hl],a
+  inc hl    ; fill out the bottom-right
+  ld [hl],a
+  add hl,de ; get ready for the next load
+  jr _load_column_graphic_done
+
+_load_column_box:
+  ld a,$80  ; load a box tile
+  ld [hl],a ; fill out the top-left
+  inc hl    ; fill out the top-right
+  inc a     ;   with the next tile
+  ld [hl],a
+  add hl,de ; fill out the bottom-left
+  inc a     ;   with the next tile
+  ld [hl],a
+  inc hl    ; fill out the bottom-right
+  inc a     ;   with the next tile
+  ld [hl],a
+  add hl,de ; get ready for the next load
+
+_load_column_graphic_done:
+  inc c     ; only bother filling out the top 9 rows, as that's all
+  ld a,c    ; that will be visible on screen
+  cp $9
+  jr nz, _load_column_loop
+  ret
 
 memcpy:
   ; parameters:
@@ -201,76 +337,5 @@ bgsky:
   ; background sky, 1x1 tile
   DB $00,$00,$00,$00,$00,$00,$00,$00
   DB $00,$00,$00,$00,$00,$00,$00,$00
-
-bg:
-  ; define one map's worth:
-  ;   256 x 256 pixels =
-  ;    32 x  32 tiles  = 1024 tiles
-  ; at 16 tiles per line of code, that's 64 lines
-  ; TODO: generate this based on some height data
-  DB $84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84
-  DB $84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84
-  DB $84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84
-  DB $84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84
-  DB $84,$84,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $84,$84,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81,$80,$81
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
-  DB $82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83,$82,$83
 
 ; vim: ft=rgbasm:tw=72:cc=72:ts=2:sw=2
