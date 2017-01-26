@@ -35,6 +35,13 @@ BGSCRL: DB ; amount to scroll the background by
 
 VBFLAG: DB ; whether or not we are in V-Blank
 
+  ; Instead of directly manipulating values in the OAM during V-Blank,
+  ; we store a copy of the OAM. Then, we can alter this copy at any
+  ; time, not just during V-Blank, and when the OAM is indeed
+  ; available, we initiate a DMA transfer from the copy to the OAM.
+OAMBUF EQU $df00  ; allocate the last page in RAM for the copy
+PLAYER EQU OAMBUF ; the player starts at the first sprite
+
   ; = INTERRUPT HANDLERS ==============================================
 
   ; These are simple interrupt handlers that simply call the actual
@@ -90,7 +97,9 @@ init:
   call lcd_off
 
   call init_ram
+  call copy_dma_routine
   call load_bg
+  call load_obj
 
   call lcd_on
   call start_timer
@@ -122,6 +131,15 @@ init_ram:
   ; initialize the RAM variables
   ld a,0
   ld [VBFLAG],a
+
+  ret
+
+copy_dma_routine:
+  ; copy the sprite DMA procedure into HRAM
+  ld hl,sprite_dma
+  ld de,hram_sprite_dma
+  ld bc,sprite_dma_end-sprite_dma
+  call memcpy
 
   ret
 
@@ -207,6 +225,55 @@ _load_column_height_done:
 
   jr load_column_into_bg_tile_map_at_address ; tail call
 
+load_obj:
+  ; load the object palette 0
+  ld a,[sppal] ; load the object palette 0 data
+  ld [$ff48],a ; and store it into the object palette 0 register
+
+  ; zero out the OAM buffer
+  ld de,OAMBUF
+  ld bc,256
+  call zeromem
+
+  ; load the sprite tiles into the Sprite Pattern Table
+  ld hl,ghost ; source address
+  ld de,$8000 ; destination address
+  ld bc,256   ; number of bytes to copy
+  call memcpy
+
+  ; Display the sprites on the screen by populating the Object
+  ; Attribute Memory (OAM). Note that the actual Y-coordinate on the
+  ; screen is the stored coordinate minus 16, and the actual X-
+  ; coordinate is the stored coordinate minus 8.
+  ld a,16        ; y-coordinate
+  ld [PLAYER],a
+  ld a,152       ; x-coordinate
+  ld [PLAYER+1],a
+  ld a,0         ; pattern number
+  ld [PLAYER+2],a
+  ld a,%00000000 ; priority: on top of background
+                 ; no y-flip
+                 ; no x-flip
+                 ; palette 0
+                 ; 4 LSB ignored
+  ld [PLAYER+3],a
+
+  ; our player requires two sprites, so initialize the second one
+  ld a,16        ; y-coordinate
+  ld [PLAYER+4],a
+  ld a,160       ; x-coordinate
+  ld [PLAYER+5],a
+  ld a,2         ; pattern number
+  ld [PLAYER+6],a
+  ld a,%00000000 ; priority: on top of background
+                 ; no y-flip
+                 ; no x-flip
+                 ; palette 0
+                 ; 4 LSB ignored
+  ld [PLAYER+7],a
+
+  ret
+
 start_timer:
   ; The timer will be incremented 4096 times each second, and each time
   ; it overflows, it will be reset to 0. This means that the timer will
@@ -227,6 +294,10 @@ vblank:
   push de
   push hl
 
+  ; Note that the DMA procedure must be initiated from High RAM. The
+  ; mechanism for that is detailed alongside the definition of this
+  ; initiation procedure.
+  call hram_sprite_dma
   call scroll_bg
 
   ld a,1
@@ -241,8 +312,8 @@ vblank:
 timer:
   push hl
 
-  ld hl,BGSCRL
-  inc [hl]
+  ld   hl,BGSCRL
+  inc  [hl]
 
   pop hl
   reti
@@ -253,6 +324,33 @@ scroll_bg:
   ld a,[BGSCRL]
   ld [$ff43],a ; set scrollx
   ret
+
+  ; During the DMA transfer, the CPU can only access the High RAM
+  ; (HRAM), so the transfer must be initiated from inside of HRAM.
+  ; However, we can't directly place this procedure there at assembly
+  ; time, so we'll put it here with the rest of the code, then copy it
+  ; into HRAM at run time.
+sprite_dma:
+  ld a,OAMBUF/$100
+  ld [$ff46],a
+  ld a,$28
+.wait:
+  dec a
+  jr nz,.wait
+  ret
+sprite_dma_end:
+
+  ; We'll set aside some space in HRAM, but we'll have to store the
+  ; actual data here at run time.
+PUSHS
+SECTION "HRAM",HRAM
+
+ ; This is the procedure that will actually be called to initiate the
+ ; DMA transfer.
+hram_sprite_dma:
+  DS sprite_dma_end-sprite_dma
+
+POPS
 
   ; = UTILITY FUNCTIONS ===============================================
 
@@ -334,6 +432,25 @@ memcpy:
 
   jr memcpy
 
+zeromem:
+  ; parameters
+  ;   de = destination address
+  ;   bc = number of bytes to zero out
+  ; assumes:
+  ;   bc > 0
+.zeromem_loop:
+  ld a,0    ; we will only be writing zeros
+  ld [de],a ; store one byte in the destination
+  inc de    ; prepare to write another byte
+
+  ; the same caveat applies as in memcpy
+  dec bc    ; decrement the counter
+  ld a,b
+  or c
+  ret z     ; return if all bytes written
+
+  jr .zeromem_loop
+
 lcd_off:
   ld a,[$ff40] ; load the LCD Control register
   bit 7,a      ; check bit 7, whether the LCD is on
@@ -414,6 +531,9 @@ next_two_rand_heights:
 bgpal:
   DB %11100100 ; white is transparent, lightest to darkest.
 
+sppal:
+  DB %00011100 ; missing second darkest
+
 bgbox:
   ; background box, 2x2 tiles
   DB $7f,$7f,$9f,$f0,$8f,$f8,$c7,$fc
@@ -429,5 +549,21 @@ bgsky:
   ; background sky, 1x1 tile
   DB $00,$00,$00,$00,$00,$00,$00,$00
   DB $00,$00,$00,$00,$00,$00,$00,$00
+
+ghost:
+  ; foreground ghost
+  ;
+  ; There are a total of 4 tiles laid out in a 2x2 grid, but because
+  ; the sprites used are 8x16 pixels in dimension, only two sprites are
+  ; required.
+
+  DB $03,$00,$0c,$03,$10,$0f,$11,$0f ; sprite 0
+  DB $23,$1d,$27,$19,$27,$19,$61,$1f
+  DB $ab,$55,$a5,$5a,$a1,$5f,$61,$1f
+  DB $21,$1f,$20,$1f,$26,$19,$19,$00
+  DB $c0,$00,$30,$c0,$f8,$f0,$f8,$f0 ; sprite 1
+  DB $fc,$d8,$fc,$98,$fc,$98,$fe,$f8
+  DB $ff,$5a,$ff,$aa,$ff,$fa,$fe,$f8
+  DB $fc,$f8,$fc,$f8,$7c,$98,$98,$00
 
 ; vim: ft=rgbasm:tw=72:cc=72:ts=2:sw=2
