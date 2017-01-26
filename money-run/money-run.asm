@@ -31,6 +31,8 @@ SECTION "RAM",BSS[$c000]
 HEIGHTS: DS 8
 RANDHEIGHT: DB ; a andom number used for generating the heights
 
+BGSCRL: DB ; amount to scroll the background by
+
 VBFLAG: DB ; whether or not we are in V-Blank
 
   ; = INTERRUPT HANDLERS ==============================================
@@ -42,6 +44,10 @@ VBFLAG: DB ; whether or not we are in V-Blank
 SECTION "vblank",HOME[$40]
   nop
   jp    vblank
+
+SECTION "timer",HOME[$50]
+  nop
+  jp    timer
 
 SECTION "start",HOME[$100]
   nop
@@ -87,6 +93,11 @@ init:
   call load_bg
 
   call lcd_on
+  call start_timer
+
+  ld a,%00000101 ; enable V-Blank interrupt
+                 ; enable timer   interrupt
+  ld [$ffff],a
   ei
 
   ; = MAIN LOOP =======================================================
@@ -121,7 +132,7 @@ load_bg:
   ; reset the screen position
   ld a,0
   ld [$ff42],a ; scrolly will always be 0
-  ld [$ff43],a ; scrollx will always be 0 (TODO: not in the future)
+  ld [$ff43],a ; scrollx starts at 0
 
   ; load the background tiles into the Tile Data Table
   ld hl,bgbox  ; source address
@@ -196,10 +207,52 @@ _load_column_height_done:
 
   jr load_column_into_bg_tile_map_at_address ; tail call
 
+start_timer:
+  ; The timer will be incremented 4096 times each second, and each time
+  ; it overflows, it will be reset to 0. This means that the timer will
+  ; overflow every (1/4096) * 256 = 0.0625s.
+  ld a,0         ; the value of rTIMA after it overflows
+  ld [$ff06],a
+  ld a,%00000100 ; enable the timer
+                 ; increment rTIMA at 4096Hz
+  ld [$ff07],a
+
+  ret
+
   ; = INTERRUPT HANDLERS ==============================================
 
 vblank:
+  push af
+  push bc
+  push de
+  push hl
+
+  call scroll_bg
+
+  ld   a,1
+  ld   [VBFLAG],a
+
+  pop  hl
+  pop  de
+  pop  bc
+  pop  af
   reti
+
+timer:
+  push hl
+
+  ld hl,BGSCRL
+  inc [hl]
+
+  pop hl
+  reti
+
+  ; = MAIN LOOP FUNCTIONS =============================================
+
+scroll_bg:
+  ld a,[BGSCRL]
+  ld [$ff43],a ; set scrollx
+  ret
 
   ; = UTILITY FUNCTIONS ===============================================
 
