@@ -29,6 +29,7 @@ SECTION "RAM",BSS[$c000]
   ;
   ; Thus, we need to allocate space for 8 bytes.
 HEIGHTS: DS 8
+RANDHEIGHT: DB ; a andom number used for generating the heights
 
 VBFLAG: DB ; whether or not we are in V-Blank
 
@@ -74,6 +75,12 @@ start:
   ld sp, $ffff ; put the stack at the top of the RAM
 
 init:
+  ; For now, initialize the PRNG with a hard-coded value, which will
+  ; of course make everything deterministic. Later, we can change this
+  ; to use some user-dependent data as the seed.
+  ld a,$37
+  ld [RANDHEIGHT],a
+
   call lcd_off
 
   call init_ram
@@ -128,30 +135,20 @@ load_bg:
   ret
 
 generate_initial_heights:
-  ; TODO: in the future, we want to procedurally generate these
-  ; heights, but for now, hard-code them as increasing, then
-  ; decreasing, steps.
-  ;
-  ; When we start doing procedural generation, we'll also need to be
-  ; able to set a single height at a time, but for now, just set them
-  ; all at once.
-  ld hl,HEIGHTS
+  ld hl,HEIGHTS ; the base address of the height map
 
-  ld [hl],$12
-  inc hl
-  ld [hl],$34
-  inc hl
-  ld [hl],$56
-  inc hl
-  ld [hl],$78
-  inc hl
-  ld [hl],$87
-  inc hl
-  ld [hl],$65
-  inc hl
-  ld [hl],$43
-  inc hl
-  ld [hl],$21
+  ld a,$0
+_generate_initial_heights_loop:
+  push af       ; preserve A
+  call next_two_rand_heights
+  ld [hl],a     ; generate two random heights and place it into the
+                ; height map
+  inc hl        ; go to the next byte in the height map
+
+  pop af        ; restore A
+  inc a         ; only generate data for 8 bytes
+  cp $8
+  jr nz, _generate_initial_heights_loop
 
   ret
 
@@ -315,6 +312,47 @@ lcd_on:
                  ; BG on
   ld [$ff40],a   ; write it to the LCD Control register
 
+rand:
+  ; An 8-bit pseudo-random number generator. Taken from
+  ; http://www.z80.info/pseudo-random.txt
+  ;
+  ; R = an integer in the range [1, 256]
+  ; R -> (33 * R) mod 257
+  ;
+  ; parameters:
+  ;   hl = address where to take the seed and store the next seed
+  ; output:
+  ;   a = next random number
+  ld a,[hl]
+  ld b,a
+
+  rrca ; multiply by 32
+  rrca
+  rrca
+  xor $1f
+
+  add a,b
+  sbc a,$ff
+
+  ld [hl],a
+  ret
+
+next_two_rand_heights:
+  ; Generate the next two random heights to put into the height map.
+  ; The result is stored as a single byte, with each nibble containing
+  ; a separate height between the range of [1, 8] inclusive.
+  ;
+  ; output:
+  ;   a = next two random heights
+  push hl          ; preserve HL
+  ld hl,RANDHEIGHT ; the PRNG seed is in RANDHEIGHT
+  call rand        ; generate a pseudo-random number in the range
+                   ; [1, 256]
+  and %01110111    ; preserve the three least-significant bits of each
+  add a,%00010001  ; nibble. This brings the value in each nibble down
+                   ; to the range of [0, 7]. Then add "1" to each
+                   ; nibble, bringing each one into the range [1, 8].
+  pop hl           ; restore HL
   ret
 
   ; = DATA ============================================================
