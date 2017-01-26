@@ -43,15 +43,15 @@ VBFLAG: DB ; whether or not we are in V-Blank
 
 SECTION "vblank",HOME[$40]
   nop
-  jp    vblank
+  jp vblank
 
 SECTION "timer",HOME[$50]
   nop
-  jp    timer
+  jp timer
 
 SECTION "start",HOME[$100]
   nop
-  jp    start
+  jp start
 
   ; = CATRIDGE HEADER =================================================
 
@@ -60,7 +60,7 @@ SECTION "start",HOME[$100]
   DB $00,$08,$11,$1F,$88,$89,$00,$0E,$DC,$CC,$6E,$E6,$DD,$DD,$D9,$99
   DB $BB,$BB,$67,$63,$6E,$0E,$EC,$CC,$DD,$DC,$99,$9F,$BB,$B9,$33,$3E
 
-  DB "AVIKDAS",0,0,0,0,0,0,0,0 ; title, upper case ASCII, 15 bytes
+  DB "MONEYRUN",0,0,0,0,0,0,0 ; title, upper case ASCII, 15 bytes
   DB 0   ; not a GBC catridge
   DB 0,0 ; new licensee code, high and low nibbles. not important
   DB 0   ; not SGB
@@ -106,15 +106,15 @@ loop:
   halt
   nop
 
-  ld   a,[VBFLAG]
-  or   0
-  jr   z,loop
-  ld   a,0
-  ld   [VBFLAG],a
+  ld a,[VBFLAG]
+  or 0
+  jr z,loop
+  ld a,0
+  ld [VBFLAG],a
 
   ; DO STUFF
 
-  jr   loop
+  jr loop
 
   ; = INITIALIZATION FUNCTIONS ========================================
 
@@ -229,13 +229,13 @@ vblank:
 
   call scroll_bg
 
-  ld   a,1
-  ld   [VBFLAG],a
+  ld a,1
+  ld [VBFLAG],a
 
-  pop  hl
-  pop  de
-  pop  bc
-  pop  af
+  pop hl
+  pop de
+  pop bc
+  pop af
   reti
 
 timer:
@@ -323,20 +323,21 @@ memcpy:
 
   ; Now we'll decrement the counter and check if it's zero.
   ; Unfortunately, when a 16-bit register is decremented, the zero flag
-  ; is not updated, so we need to check if the counter is zero manually.
-  ; A 16-bit value is zero when its constituent 8-bit portions are both
-  ; zero, that is when (b | c) == 0, where "|" is a bitwise OR.
+  ; is not updated, so we need to check if the counter is zero
+  ; manually. A 16-bit value is zero when its constituent 8-bit
+  ; portions are both zero, that is when (b | c) == 0, where "|" is a
+  ; bitwise OR.
   dec bc    ; decrement the counter
-  ld  a,b
-  or  c
+  ld a,b
+  or c
   ret z     ; return if all bytes written
 
   jr memcpy
 
 lcd_off:
-  ld  a,[$ff40] ; load the LCD Control register
-  bit 7,a       ; check bit 7, whether the LCD is on
-  ret z         ; if off, return immediately
+  ld a,[$ff40] ; load the LCD Control register
+  bit 7,a      ; check bit 7, whether the LCD is on
+  ret z        ; if off, return immediately
 
 wait_vblank:
   ld a,[$ff44]  ; load the vertical line the LCD is at
@@ -348,9 +349,9 @@ wait_vblank:
   ; made sure that [LY] is exactly 145, the first value when entering
   ; VBlank.
 
-  ld  a,[$ff40] ; load the LCD Control register
-  res 7,a       ; clear bit 7, turning off the LCD
-  ld  [$ff40],a ; write the new value back to the LCD Control register
+  ld a,[$ff40] ; load the LCD Control register
+  res 7,a      ; clear bit 7, turning off the LCD
+  ld [$ff40],a ; write the new value back to the LCD Control register
 
   ret ; and done...
 
