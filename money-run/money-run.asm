@@ -34,10 +34,19 @@ RANDHEIGHT: DB ; a andom number used for generating the heights
 BGSCRL: DB ; amount to scroll the background by
 
   ; The player struct, which defines the state of the player.
+  ;
+  ; The Y-coordinate and downward velocity are are stored as two bytes
+  ; each, in a 8.8 fixed point format. This means that the first byte
+  ; is the integer portion of the number, and the second byte contains
+  ; the fractional portion.
+  ;
+  ; The X-coordinate does not need to be stored in fixed point format,
+  ; since no forces are applied horizontally, so no numeric integration
+  ; needs to be done on the X-coordinate.
 PLAYER_STATE:
-  DB ; the x position
-  DB ; the y position
-  DB ; the downward velocity
+  DB   ; the x position
+  DS 2 ; the y position
+  DS 2 ; the downward velocity
 
 VBFLAG: DB ; whether or not we are in V-Blank
 
@@ -127,7 +136,8 @@ loop:
   ld a,0
   ld [VBFLAG],a
 
-  ; DO STUFF
+  call apply_forces
+  call position_player
 
   jr loop
 
@@ -238,8 +248,10 @@ load_obj:
   ld a,144
   ld [PLAYER_STATE],a   ; X-coordinate
   ld a,0
-  ld [PLAYER_STATE+1],a ; Y-coordinate
-  ld [PLAYER_STATE+2],a ; downward velocity
+  ld [PLAYER_STATE+1],a ; Y-coordinate (integer part)
+  ld [PLAYER_STATE+2],a ; Y-coordinate (fractional part)
+  ld [PLAYER_STATE+3],a ; downward velocity (integer part)
+  ld [PLAYER_STATE+4],a ; downward velocity (fractional part)
 
   ; load the object palette 0
   ld a,[sppal] ; load the object palette 0 data
@@ -326,12 +338,52 @@ timer:
 
   ; = MAIN LOOP FUNCTIONS =============================================
 
+apply_forces:
+  ; In simple Newtonian mechanics, over time:
+  ;
+  ; 1. The downward speed of an object increases linearly with time,
+  ;    proportional to the acceleration due to gravity.
+  ;
+  ; 2. The Y-position increases linearly, proportional to the downward,
+  ;    velocity. This means it actually increases quadratically with
+  ;    time:
+  ;
+  ;        y(t) = g * t^2 + v0 * t + y0
+  ;
+  ; This results in the following updates:
+  ;
+  ;     y' = y' + v * t * k
+  ;     v' = v' + g * t * k
+  ;
+  ; Where "k" is a constant to account for the fact that we're dealing
+  ; with pixels and frames, not meters and seconds. Because the
+  ; timestep is constant (always one frame), we can set "t * k = 1",
+  ; and set "g" to whatever value makes sense for us.
+
+  ; y' = y' + v
+  ld bc,PLAYER_STATE+2
+  ld de,PLAYER_STATE+4
+  call add_16bit_numbers_in_memory
+
+  ; v' = v' + g
+  ; register b = g in the above equation. The value can be adjusted
+  ; based on trial and error to get the right feel for the game.
+  ld hl,PLAYER_STATE+4
+  ld b,32
+  call add_fractional_to_16bit_number
+
+  ret
+
 position_player:
   ; Note that the actual Y-coordinate on the screen is the value stored
   ; in the OAM structure minus 16, and the actual X-coordinate is the
   ; stored value minus 8. Furthermore, the two sprites that comprise
   ; the player have the same Y-coordinate, but two different
   ; X-coordinates (one being 8 more than the other).
+
+  ; Because the coordinates are stored in 8.8 fixed point format, we
+  ; can simply ignore the second byte in each pair, since the entire
+  ; first byte is the integer portion.
 
   ; load and write the X-coordinates
   ld a,[PLAYER_STATE]
@@ -552,6 +604,65 @@ next_two_rand_heights:
                    ; to the range of [0, 7]. Then add "1" to each
                    ; nibble, bringing each one into the range [1, 8].
   pop hl           ; restore HL
+  ret
+
+add_fractional_to_16bit_number:
+  ; Adds a fractional value to 16-bit number stored in a 8.8 fixed
+  ; point format. This entails adding the given value to the second
+  ; byte (fractional part) of the number, then propagating the carry to
+  ; the first byte (the integer part).
+  ;
+  ; No corresponding function is necessary to add an integer value, as
+  ; that can be accomplished purely by adding to the first byte,
+  ; without dealing with any carry.
+  ;
+  ; Stores the resulting number back at the location from which the
+  ; original value was read.
+  ;
+  ; parameters:
+  ;   hl = address of *second* byte of the number to add to
+  ;   b  = the fractional number to add
+  ; output:
+  ;   [hl - 1] = [hl - 1] + b
+  ld a,[hl]   ; load the fractional part
+  add a,b     ; add the fractional part, setting the carry flag
+  ld [hl],a   ; store the fractional part
+  dec hl      ; move the address to the integer part
+              ;   this does not set the carry
+
+  jr nc,.done ; no need to do anything to the integer part if there was
+              ;   no carry from the fractional part
+  inc [hl]    ; but if there was a carry, increment the integer part
+
+.done:
+  ret
+
+add_16bit_numbers_in_memory:
+  ; Adds two 16-bit numbers stored in a 8.8 fixed point format, storing
+  ; the result back into the memory location of the first of the two
+  ; numbers.
+  ;
+  ; parameters:
+  ;   bc = address of the *second* byte of the first number
+  ;   de = address of the *second* byte of the second number
+  ; output:
+  ;   [bc - 1] = [bc - 1] + [de - 1]
+  ld a,[bc] ; load the fractional part of the first number
+  ld h,a    ;   into "h"
+  ld a,[de] ; load the fractional part of the second number into "a"
+  add a,h   ; a += h. This sets the carry flag.
+  ld [bc],a ; store the result back into the fractional part of the
+            ;   first number
+
+  dec bc    ; move the the integer part of both numbers
+  dec de    ; this doesn't affect the carry flag
+
+  ld a,[bc] ; load the integer part of the first number
+  ld h,a    ;   into "h"
+  ld a,[de] ; load the integer part of the second number into "a"
+  adc a,h   ; a += h + c
+  ld [bc],a ; store the result back into the integer part of the first
+            ;   number
   ret
 
   ; = DATA ============================================================
