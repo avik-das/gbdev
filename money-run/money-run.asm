@@ -365,6 +365,21 @@ apply_forces:
   ld de,PLAYER_STATE+4
   call add_16bit_numbers_in_memory
 
+  call check_is_grounded
+  jr z,.not_grounded
+
+  ; Since the player is on or below the ground, reset the player to the
+  ; correct height, and set the downward velocity to "0". Register a
+  ; contains the height to which to reset the player, as an integer.
+  sub 16 ; subtract 16 because the height refers to the player's feet
+  ld [PLAYER_STATE+1],a
+  ld a,0
+  ld [PLAYER_STATE+2],a
+  ld [PLAYER_STATE+3],a
+  ld [PLAYER_STATE+4],a
+  jr .grounded
+
+.not_grounded:
   ; v' = v' + g
   ; register b = g in the above equation. The value can be adjusted
   ; based on trial and error to get the right feel for the game.
@@ -372,6 +387,109 @@ apply_forces:
   ld b,32
   call add_fractional_to_16bit_number
 
+.grounded:
+  ret
+
+check_is_grounded:
+  ; output:
+  ;   a = the height where the player should be placed, if the player
+  ;       is on or below the ground. The output is "0" if the player is
+  ;       above the height of the tallest column under it.
+  ;
+  ; Sets the zero flag based on if "a" is "0" or not.
+  ld a,[PLAYER_STATE]  ; to get the player's real x position, start
+  ld hl,BGSCRL         ;   with the position on screen, and add the
+  add a,[hl]           ;   level scroll offset
+  ld c,a               ; keep the position around for later
+
+  and %00011111        ; if the last five bits are zero, then we're
+  jr z,.on_even_column ;   cleanly on an even-numbered column
+  and %00001111        ; otherwise, if the last four bits are zero,
+  jr z,.on_odd_column  ;   then the fifth bit must have been one, and
+                       ;   we're cleanly on an odd-numbered column
+
+  jr .between_even_and_odd_column
+
+  ; At this point, we know at least one of the last four digits is non-
+  ; zero, so we're between columns. That means we have to check both
+  ; nibbles of one byte in the height map, or one nibble each in two
+  ; adjacent bytes.
+
+.on_even_column:
+  ; The player is exclusively over an even-number column.
+  ld a,c        ; reload the x position
+  srl a         ; divide it by 16 to get the column number
+  srl a
+  srl a
+  srl a
+  srl a         ; and again by 2 to get the index into the height map
+  ld hl,HEIGHTS ; load the base address of the height map
+  add a,l       ;   add the index into the height map and save it into
+  ld l,a        ;   "l" so that "hl" points to the height that we then
+  ld a,[hl]     ;   load into "a"
+  and %11110000 ; get the height nibble of the height
+  swap a        ;   storing it in the low nibble
+  ld b,a        ; compute (9 - height), as that tells us the number of
+  ld a,9        ;   sky tiles above the player's feet
+  sub b
+  sla a         ; multiply by 16 to get the number of pixels above the
+  sla a         ;   the player's feet
+  sla a
+  sla a
+  ld b,a
+
+  ld a,[PLAYER_STATE+1] ; load the player's y position and add 16 to
+  add 16                ;   get the position of the player's feet
+  sub b                 ; compare it against the ground height as
+  jr c,.not_grounded    ;   computed above (number of pixels above the
+  ld a,b                ;   the player's feet)
+  jr .compare
+
+.on_odd_column:
+  ; The player is exclusively over an odd-number column.
+  ; TODO: the following is heavily copy-pasted from the
+  ;       ".on_even_column" section, so refactor the common parts
+  ld a,c
+  srl a
+  srl a
+  srl a
+  srl a
+  srl a
+  ld hl,HEIGHTS
+  add a,l
+  ld l,a
+  ld a,[hl]
+  and %00001111
+  ld b,a
+  ld a,$9
+  sub b
+  sla a
+  sla a
+  sla a
+  sla a
+  ld b,a
+
+  ld a,[PLAYER_STATE+1]
+  add 16
+  sub b
+  jr c,.not_grounded
+  ld a,b
+  jr .compare
+
+.between_even_and_odd_column:
+.between_odd_and_even_column:
+  ; TODO: implement. for now, check against 128
+  ld a,[PLAYER_STATE+1] ; load the y position
+  sub 128
+  jr c,.not_grounded
+  ld a,144
+  jr .compare
+
+.not_grounded:
+  ld a,0
+
+.compare:
+  cp 0
   ret
 
 position_player:
