@@ -33,6 +33,12 @@ RANDHEIGHT: DB ; a andom number used for generating the heights
 
 BGSCRL: DB ; amount to scroll the background by
 
+  ; The player struct, which defines the state of the player.
+PLAYER_STATE:
+  DB ; the x position
+  DB ; the y position
+  DB ; the downward velocity
+
 VBFLAG: DB ; whether or not we are in V-Blank
 
   ; Instead of directly manipulating values in the OAM during V-Blank,
@@ -223,9 +229,18 @@ _load_column_height_done:
   ld h,$98      ; HL = $98DD, where DD = index * 2
   ld l,d
 
-  jr load_column_into_bg_tile_map_at_address ; tail call
+  jp load_column_into_bg_tile_map_at_address ; tail call
 
 load_obj:
+  ; Set up the initial player state. The position of the player is in
+  ; actual pixel coordinates on screen, as opposed to being offset by
+  ; 8 or 16 pixels as is the case in the OAM structures.
+  ld a,144
+  ld [PLAYER_STATE],a   ; X-coordinate
+  ld a,0
+  ld [PLAYER_STATE+1],a ; Y-coordinate
+  ld [PLAYER_STATE+2],a ; downward velocity
+
   ; load the object palette 0
   ld a,[sppal] ; load the object palette 0 data
   ld [$ff48],a ; and store it into the object palette 0 register
@@ -242,13 +257,8 @@ load_obj:
   call memcpy
 
   ; Display the sprites on the screen by populating the Object
-  ; Attribute Memory (OAM). Note that the actual Y-coordinate on the
-  ; screen is the stored coordinate minus 16, and the actual X-
-  ; coordinate is the stored coordinate minus 8.
-  ld a,16        ; y-coordinate
-  ld [PLAYER],a
-  ld a,152       ; x-coordinate
-  ld [PLAYER+1],a
+  ; Attribute Memory (OAM). The X- and Y-coordinates will be filled in
+  ; by "position_player" later.
   ld a,0         ; pattern number
   ld [PLAYER+2],a
   ld a,%00000000 ; priority: on top of background
@@ -259,10 +269,6 @@ load_obj:
   ld [PLAYER+3],a
 
   ; our player requires two sprites, so initialize the second one
-  ld a,16        ; y-coordinate
-  ld [PLAYER+4],a
-  ld a,160       ; x-coordinate
-  ld [PLAYER+5],a
   ld a,2         ; pattern number
   ld [PLAYER+6],a
   ld a,%00000000 ; priority: on top of background
@@ -272,7 +278,7 @@ load_obj:
                  ; 4 LSB ignored
   ld [PLAYER+7],a
 
-  ret
+  jp position_player ; tail call
 
 start_timer:
   ; The timer will be incremented 4096 times each second, and each time
@@ -319,6 +325,28 @@ timer:
   reti
 
   ; = MAIN LOOP FUNCTIONS =============================================
+
+position_player:
+  ; Note that the actual Y-coordinate on the screen is the value stored
+  ; in the OAM structure minus 16, and the actual X-coordinate is the
+  ; stored value minus 8. Furthermore, the two sprites that comprise
+  ; the player have the same Y-coordinate, but two different
+  ; X-coordinates (one being 8 more than the other).
+
+  ; load and write the X-coordinates
+  ld a,[PLAYER_STATE]
+  add a,8
+  ld [PLAYER+1],a
+  add a,8
+  ld [PLAYER+5],a
+
+  ; load and write the Y-coordinate
+  ld a,[PLAYER_STATE+1]
+  add a,16
+  ld [PLAYER],a
+  ld [PLAYER+4],a
+
+  ret
 
 scroll_bg:
   ld a,[BGSCRL]
