@@ -16,6 +16,21 @@
 
 SECTION "RAM",BSS[$c000]
 
+  ; The buttons that are joypad pressed on the joypad. The fields are
+  ; as follows:
+  ;   bit 7: down
+  ;   bit 6: up
+  ;   bit 5: left
+  ;   bit 4: right
+  ;   bit 3: start
+  ;   bit 2: select
+  ;   bit 1: B
+  ;   bit 0: A
+  ; When a bit is set, the corresponding button is pressed. This
+  ; structure is updated by read_joypad.
+PAD   : DB
+OLDPAD: DB
+
   ; The background is 256 pixels wide, with each column taking up 16
   ; pixels, giving us 16 separate heights to work with.
   ;
@@ -136,6 +151,8 @@ loop:
   ld a,0
   ld [VBFLAG],a
 
+  call read_joypad
+  call react_to_input
   call apply_forces
   call position_player
 
@@ -146,6 +163,8 @@ loop:
 init_ram:
   ; initialize the RAM variables
   ld a,0
+  ld [   PAD],a
+  ld [OLDPAD],a
   ld [VBFLAG],a
 
   ret
@@ -337,6 +356,77 @@ timer:
   reti
 
   ; = MAIN LOOP FUNCTIONS =============================================
+
+read_joypad:
+  ; The state that was current before should now become the old state.
+  ld a,[PAD]
+  ld [OLDPAD],a
+
+  ; First, we will read the direction pad by sending a value to the
+  ; joypad register (P1) that will enable the d-pad (by clearing bit 4)
+  ; and disable the buttons (by setting bit 5).
+  ld a,%00100000
+  ld [$ff00],a
+
+  ; To minimize the effects of key bouncing, in which the contacts of
+  ; the joypad cause oscillations between the high and low states, we
+  ; read from P1 multiple times and only use the last value read.
+  ld a,[$ff00]
+  ld a,[$ff00]
+  ld a,[$ff00]
+  ld a,[$ff00]
+
+  and %00001111 ; pick out only the input lines...
+  swap a        ; ...put the states into the high nibble...
+  ld b,a        ; ...and save it away temporarily
+
+  ; Now we want to read the buttons, and that means we disable the d-pad
+  ; (by setting bit 4) and enable the buttons (by clearing bit 5).
+  ld a,%00010000
+  ld [$ff00],a
+
+  ld a,[$ff00]
+  ld a,[$ff00]
+  ld a,[$ff00]
+  ld a,[$ff00]
+
+  and %00001111
+  or b          ; B contains the d-pad input in the high nibble, so we
+                ; can we incorporate the button input in the low nibble
+
+  ; Now, A contains the state of the d-pad and the buttons, but when a
+  ; bit is cleared, that means the button is pressed. So, we take the
+  ; complement, and we have an intuitive mapping of 1->pressed and
+  ; 0->not pressed.
+  cpl
+  ld [PAD],a
+
+  ret
+
+react_to_input:
+  ld a,[PAD]
+  bit 0,a
+  jp z,.done
+
+  ld a,[OLDPAD]
+  bit 0,a
+  jp nz,.done ; only respond to A if A wasn't pressed before
+
+  ld a,[PLAYER_STATE+3]
+  cp 0
+  jp nz,.done
+
+  ld a,[PLAYER_STATE+4]
+  cp 0
+  jp nz,.done
+
+  ld a,$fc
+  ld [PLAYER_STATE+3],a
+  ld a,$70
+  ld [PLAYER_STATE+4],a
+
+.done
+  ret
 
 apply_forces:
   ; In simple Newtonian mechanics, over time:
