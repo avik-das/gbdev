@@ -408,17 +408,106 @@ check_is_grounded:
   jr z,.on_odd_column  ;   then the fifth bit must have been one, and
                        ;   we're cleanly on an odd-numbered column
 
-  jr .between_even_and_odd_column
-
   ; At this point, we know at least one of the last four digits is non-
   ; zero, so we're between columns. That means we have to check both
   ; nibbles of one byte in the height map, or one nibble each in two
   ; adjacent bytes.
+  ld a,c
+  and %00010000
+  jr z,.between_even_and_odd_column
+
+.between_odd_and_even_column:
+  ; The column under the left part of the player is an odd-numbered
+  ; column, and the column under the right part of the player is an
+  ; even-numbered column. That means we have to check the low nibble
+  ; of one height map entry, and the high nibble of the next one.
+  ld a,c        ; reload the x position
+  call load_height_map_entry_for_x_position
+  and %00001111 ; get the low nibble of the height
+  ld d,a
+
+  ld a,c        ; reload the x position
+  add 15        ; get the x position at the right edge of the player
+  call load_height_map_entry_for_x_position
+  and %11110000 ; get the high nibble of the height
+  swap a        ;   storing it in the low nibble
+  ld b,d
+
+  call max
+  call height_to_num_pixels_above_column
+  jr .check_against_player_y_position
 
 .on_even_column:
   ; The player is exclusively over an even-number column.
   ld a,c        ; reload the x position
-  srl a         ; divide it by 16 to get the column number
+  call load_height_map_entry_for_x_position
+  and %11110000 ; get the high nibble of the height
+  swap a        ;   storing it in the low nibble
+  call height_to_num_pixels_above_column
+  jr .check_against_player_y_position
+
+.on_odd_column:
+  ; The player is exclusively over an odd-number column.
+  ld a,c        ; reload the x position
+  call load_height_map_entry_for_x_position
+  and %00001111 ; get the low nibble of the height
+  call height_to_num_pixels_above_column
+  jr .check_against_player_y_position
+
+.between_even_and_odd_column:
+  ; The column under the left part of the player is an even-numbered
+  ; column, and the column under the right part of the player is an
+  ; odd-numbered column. That means we have to check the low and high
+  ; nibbles of the same height map entry.
+  ; of one height map entry, and the high nibble of the next one.
+  ld a,c        ; reload the x position
+  call load_height_map_entry_for_x_position
+  push af       ; save the height map entry
+  and %00001111 ; get the low nibble of the height
+  ld d,a
+
+  pop af
+  and %11110000 ; get the high nibble of the height
+  swap a        ;   storing it in the low nibble
+  ld b,d
+
+  call max
+  call height_to_num_pixels_above_column
+
+.check_against_player_y_position:
+  ; At this point, no matter which branch was executed, register a
+  ; contains the number of pixels above the player's feet on the
+  ; highest column under the player.
+  ;
+  ; Now, we just compare that value against the position of the
+  ; player's feet, and we're done.
+  ld b,a
+  ld a,[PLAYER_STATE+1] ; load the player's y position and add 16 to
+  add 16                ;   get the position of the player's feet
+  sub b                 ; compare it against the ground height as
+  jr c,.not_grounded    ;   computed above (number of pixels above the
+                        ;   the player's feet)
+  ld a,b                ; either we're below the ground or on the
+  jr .set_z_flag        ;   ground. Either way, the output is the
+                        ;   ground position.
+
+.not_grounded:
+  ld a,0
+
+.set_z_flag:
+  cp 0
+  ret
+
+load_height_map_entry_for_x_position:
+  ; parameters:
+  ;   a = the real x position of the player in the level, modulo 256.
+  ;       This is the x position of the player on the screen, plus the
+  ;       offset of the background.
+  ; output:
+  ;   a = the height map entry corresponding to the given x position.
+  ;       This entry is one byte, and it consists of the heights for
+  ;       two adjacent columns.
+  srl a         ; divide the x position by 16 to get the column number
   srl a
   srl a
   srl a
@@ -427,69 +516,20 @@ check_is_grounded:
   add a,l       ;   add the index into the height map and save it into
   ld l,a        ;   "l" so that "hl" points to the height that we then
   ld a,[hl]     ;   load into "a"
-  and %11110000 ; get the height nibble of the height
-  swap a        ;   storing it in the low nibble
+  ret
+
+height_to_num_pixels_above_column:
+  ; parameters:
+  ;   a = the height of a column, as extracted from the height map
+  ; output:
+  ;   a = the number of pixels that make up the sky above the column
   ld b,a        ; compute (9 - height), as that tells us the number of
-  ld a,9        ;   sky tiles above the player's feet
+  ld a,9        ;   sky tiles above the column
   sub b
   sla a         ; multiply by 16 to get the number of pixels above the
-  sla a         ;   the player's feet
+  sla a         ;   column
   sla a
   sla a
-  ld b,a
-
-  ld a,[PLAYER_STATE+1] ; load the player's y position and add 16 to
-  add 16                ;   get the position of the player's feet
-  sub b                 ; compare it against the ground height as
-  jr c,.not_grounded    ;   computed above (number of pixels above the
-  ld a,b                ;   the player's feet)
-  jr .compare
-
-.on_odd_column:
-  ; The player is exclusively over an odd-number column.
-  ; TODO: the following is heavily copy-pasted from the
-  ;       ".on_even_column" section, so refactor the common parts
-  ld a,c
-  srl a
-  srl a
-  srl a
-  srl a
-  srl a
-  ld hl,HEIGHTS
-  add a,l
-  ld l,a
-  ld a,[hl]
-  and %00001111
-  ld b,a
-  ld a,$9
-  sub b
-  sla a
-  sla a
-  sla a
-  sla a
-  ld b,a
-
-  ld a,[PLAYER_STATE+1]
-  add 16
-  sub b
-  jr c,.not_grounded
-  ld a,b
-  jr .compare
-
-.between_even_and_odd_column:
-.between_odd_and_even_column:
-  ; TODO: implement. for now, check against 128
-  ld a,[PLAYER_STATE+1] ; load the y position
-  sub 128
-  jr c,.not_grounded
-  ld a,144
-  jr .compare
-
-.not_grounded:
-  ld a,0
-
-.compare:
-  cp 0
   ret
 
 position_player:
@@ -753,6 +793,25 @@ add_fractional_to_16bit_number:
   inc [hl]    ; but if there was a carry, increment the integer part
 
 .done:
+  ret
+
+max:
+  ; Given two 8-bit integers, returns the larger of the two.
+  ;
+  ; parameters:
+  ;   a = the first integer
+  ;   b = the second integer
+  ; output:
+  ;   a = max(a, b)
+  sub b              ; carry => a - b < 0 => a < b
+  jr c,.b_is_larger
+
+.a_is_larger:
+  add b              ; restore a to its original value
+  ret
+
+.b_is_larger:
+  ld a,b
   ret
 
 add_16bit_numbers_in_memory:
