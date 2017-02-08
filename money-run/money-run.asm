@@ -847,10 +847,10 @@ next_two_rand_heights:
   ld hl,RANDHEIGHT ; the PRNG seed is in RANDHEIGHT
   call rand        ; generate a pseudo-random number in the range
                    ; [1, 256]
-  and %01110111    ; preserve the three least-significant bits of each
-  add a,%00010001  ; nibble. This brings the value in each nibble down
-                   ; to the range of [0, 7]. Then add "1" to each
-                   ; nibble, bringing each one into the range [1, 8].
+  and %00110011    ; preserve the two least-significant bits of each
+  add a,%00100010  ; nibble. This brings the value in each nibble down
+                   ; to the range of [0, 3]. Then add "2" to each
+                   ; nibble, bringing each one into the range [2, 5].
   pop hl           ; restore HL
   ret
 
