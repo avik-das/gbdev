@@ -44,7 +44,7 @@ OLDPAD: DB
   ;
   ; Thus, we need to allocate space for 8 bytes.
 HEIGHTS: DS 8
-RANDHEIGHT: DB ; a andom number used for generating the heights
+RANDHEIGHT: DB ; a random number used for generating the heights
 
 BGSCRL: DB ; amount to scroll the background by
 
@@ -163,8 +163,9 @@ loop:
 init_ram:
   ; initialize the RAM variables
   ld a,0
-  ld [   PAD],a
+  ld [PAD],a
   ld [OLDPAD],a
+  ld [BGSCRL],a
   ld [VBFLAG],a
 
   ret
@@ -261,9 +262,15 @@ _load_column_height_done:
   jp load_column_into_bg_tile_map_at_address ; tail call
 
 load_obj:
-  ; Set up the initial player state. The position of the player is in
-  ; actual pixel coordinates on screen, as opposed to being offset by
-  ; 8 or 16 pixels as is the case in the OAM structures.
+  ; Set up the initial player state.
+  ;
+  ; The x position is the actual position on screen, plus 16. This
+  ; allows the player to go partally off screen without the position
+  ; wrapping around.
+  ;
+  ; The y position is the actual pixel coordinates on screen, as
+  ; opposed to being offset by 16 pixels as is the case in the OAM
+  ; structure.
   ld a,144
   ld [PLAYER_STATE],a   ; X-coordinate
   ld a,0
@@ -349,8 +356,11 @@ vblank:
 timer:
   push hl
 
-  ld   hl,BGSCRL
-  inc  [hl]
+  ld hl,BGSCRL
+  inc [hl]
+
+  ld hl,PLAYER_STATE
+  dec [hl]
 
   pop hl
   reti
@@ -404,28 +414,50 @@ read_joypad:
   ret
 
 react_to_input:
+.move_right:
+  ld a,[PAD]
+  bit 4,a
+  jr z,.move_left
+
+  ld a,[PLAYER_STATE]
+  sub 175
+  jr nc,.move_left
+
+  add 176
+  ld [PLAYER_STATE],a
+
+.move_left:
+  ld a,[PAD]
+  bit 5,a
+  jr z,.jump
+
+  ld a,[PLAYER_STATE]
+  sub 1
+  ld [PLAYER_STATE],a
+
+.jump:
   ld a,[PAD]
   bit 0,a
-  jp z,.done
+  jr z,.done
 
   ld a,[OLDPAD]
   bit 0,a
-  jp nz,.done ; only respond to A if A wasn't pressed before
+  jr nz,.done ; only respond to A if A wasn't pressed before
 
   ld a,[PLAYER_STATE+3]
   cp 0
-  jp nz,.done
+  jr nz,.done
 
   ld a,[PLAYER_STATE+4]
   cp 0
-  jp nz,.done
+  jr nz,.done
 
   ld a,$fc
   ld [PLAYER_STATE+3],a
   ld a,$70
   ld [PLAYER_STATE+4],a
 
-.done
+.done:
   ret
 
 apply_forces:
@@ -488,8 +520,9 @@ check_is_grounded:
   ;
   ; Sets the zero flag based on if "a" is "0" or not.
   ld a,[PLAYER_STATE]  ; to get the player's real x position, start
-  ld hl,BGSCRL         ;   with the position on screen, and add the
-  add a,[hl]           ;   level scroll offset
+  sub 16               ;   with the position on screen, and add the
+  ld hl,BGSCRL         ;   level scroll offset
+  add a,[hl]
   ld c,a               ; keep the position around for later
 
   and %00011111        ; if the last five bits are zero, then we're
@@ -635,7 +668,7 @@ position_player:
 
   ; load and write the X-coordinates
   ld a,[PLAYER_STATE]
-  add a,8
+  sub a,8
   ld [PLAYER+1],a
   add a,8
   ld [PLAYER+5],a
