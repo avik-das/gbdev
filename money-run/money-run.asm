@@ -34,16 +34,10 @@ OLDPAD: DB
   ; The background is 256 pixels wide, with each column taking up 16
   ; pixels, giving us 16 separate heights to work with.
   ;
-  ; Now, while the background is also 256 pixels tall, we only see the
-  ; top 144 pixels. Again, with each row taking up 16 pixels, that means
-  ; each height is between 0 and 9. We can allow a single height to take
-  ; 4 bits, i.e. 2 heights per byte. (In reality, we don't allow a
-  ; column to take up the entire screen height, nor allow an empty
-  ; column, so we could get away with 3 bits per column, but that's
-  ; awkward.)
-  ;
-  ; Thus, we need to allocate space for 8 bytes.
-HEIGHTS: DS 8
+  ; We can exploit the fact that not all eight bits in one byte are
+  ; used to store a height, but storing multiple heights in one byte
+  ; results in much more awkward code. This is a space-time trade-off.
+HEIGHTS: DS 16
 RANDHEIGHT: DB ; a random number used for generating the heights
 
 BGSCRL: DB ; amount to scroll the background by
@@ -205,14 +199,14 @@ generate_initial_heights:
   ld a,$0
 _generate_initial_heights_loop:
   push af       ; preserve A
-  call next_two_rand_heights
+  call next_rand_height
   ld [hl],a     ; generate two random heights and place it into the
                 ; height map
   inc hl        ; go to the next byte in the height map
 
   pop af        ; restore A
-  inc a         ; only generate data for 8 bytes
-  cp $8
+  inc a         ; only generate data for 16 bytes
+  cp $16
   jr nz, _generate_initial_heights_loop
 
   ret
@@ -235,23 +229,11 @@ load_column_into_bg_tile_map:
   ld d,a        ; save a, because we'll need the original value later
 
   ld hl,HEIGHTS ; start with the start address of the height map
-  srl a         ; divide the column index by 2, since there are two
-                ; columns per byte
-  ld b,$00      ; bc = $00AA, where AA = index / 2
+  ld b,$00      ; bc = $00AA, where AA = index
   ld c,a
   add hl,bc     ; actual address = start of height map + $00AA
 
-  ld a,d        ; grab the original index again
-  srl a         ; divide it by 2, which sets the carry flag if the
-                ; index was odd
-  ld a,[hl]     ; grab the two heights from the height map. Loading
-                ; from memory doesn't affect the carry flag, so we'll
-                ; check against the carry flag set by the division.
-  jr c, _load_column_height_done
-  swap a        ; bring the high nibble down if the index was even
-
-_load_column_height_done:
-  and $0f       ; preserve only the low nibble
+  ld a,[hl]     ; grab the height from the height map.
   ld b,a        ; save the height in b
 
   sla d         ; multiply the column index by 2, since in the tile
@@ -525,76 +507,31 @@ check_is_grounded:
   add a,[hl]
   ld c,a               ; keep the position around for later
 
-  and %00011111        ; if the last five bits are zero, then we're
-  jr z,.on_even_column ;   cleanly on an even-numbered column
-  and %00001111        ; otherwise, if the last four bits are zero,
-  jr z,.on_odd_column  ;   then the fifth bit must have been one, and
-                       ;   we're cleanly on an odd-numbered column
+  and %00001111        ; if the last four bits are zero, then we're
+  jr z,.on_column      ;   cleanly on a column
 
-  ; At this point, we know at least one of the last four digits is non-
-  ; zero, so we're between columns. That means we have to check both
-  ; nibbles of one byte in the height map, or one nibble each in two
-  ; adjacent bytes.
-  ld a,c
-  and %00010000
-  jr z,.between_even_and_odd_column
+  ; At this point, we know at least one of the last three digits is
+  ; non-zero, so we're between columns. That means we have to check
+  ; two adjacent columns.
 
-.between_odd_and_even_column:
-  ; The column under the left part of the player is an odd-numbered
-  ; column, and the column under the right part of the player is an
-  ; even-numbered column. That means we have to check the low nibble
-  ; of one height map entry, and the high nibble of the next one.
+.between_columns:
   ld a,c        ; reload the x position
   call load_height_map_entry_for_x_position
-  and %00001111 ; get the low nibble of the height
   ld d,a
 
   ld a,c        ; reload the x position
   add 15        ; get the x position at the right edge of the player
   call load_height_map_entry_for_x_position
-  and %11110000 ; get the high nibble of the height
-  swap a        ;   storing it in the low nibble
   ld b,d
 
   call max
   call height_to_num_pixels_above_column
   jr .check_against_player_y_position
 
-.on_even_column:
-  ; The player is exclusively over an even-number column.
+.on_column:
+  ; The player is exclusively over a column.
   ld a,c        ; reload the x position
   call load_height_map_entry_for_x_position
-  and %11110000 ; get the high nibble of the height
-  swap a        ;   storing it in the low nibble
-  call height_to_num_pixels_above_column
-  jr .check_against_player_y_position
-
-.on_odd_column:
-  ; The player is exclusively over an odd-number column.
-  ld a,c        ; reload the x position
-  call load_height_map_entry_for_x_position
-  and %00001111 ; get the low nibble of the height
-  call height_to_num_pixels_above_column
-  jr .check_against_player_y_position
-
-.between_even_and_odd_column:
-  ; The column under the left part of the player is an even-numbered
-  ; column, and the column under the right part of the player is an
-  ; odd-numbered column. That means we have to check the low and high
-  ; nibbles of the same height map entry.
-  ; of one height map entry, and the high nibble of the next one.
-  ld a,c        ; reload the x position
-  call load_height_map_entry_for_x_position
-  push af       ; save the height map entry
-  and %00001111 ; get the low nibble of the height
-  ld d,a
-
-  pop af
-  and %11110000 ; get the high nibble of the height
-  swap a        ;   storing it in the low nibble
-  ld b,d
-
-  call max
   call height_to_num_pixels_above_column
 
 .check_against_player_y_position:
@@ -634,7 +571,6 @@ load_height_map_entry_for_x_position:
   srl a
   srl a
   srl a
-  srl a         ; and again by 2 to get the index into the height map
   ld hl,HEIGHTS ; load the base address of the height map
   add a,l       ;   add the index into the height map and save it into
   ld l,a        ;   "l" so that "hl" points to the height that we then
@@ -869,21 +805,20 @@ rand:
   ld [hl],a
   ret
 
-next_two_rand_heights:
-  ; Generate the next two random heights to put into the height map.
-  ; The result is stored as a single byte, with each nibble containing
-  ; a separate height between the range of [1, 8] inclusive.
+next_rand_height:
+  ; Generate the next random height to put into the height map. The
+  ; result is in the range of [2, 5] inclusive.
   ;
   ; output:
-  ;   a = next two random heights
+  ;   a = next random height
   push hl          ; preserve HL
   ld hl,RANDHEIGHT ; the PRNG seed is in RANDHEIGHT
   call rand        ; generate a pseudo-random number in the range
                    ; [1, 256]
-  and %00110011    ; preserve the two least-significant bits of each
-  add a,%00100010  ; nibble. This brings the value in each nibble down
-                   ; to the range of [0, 3]. Then add "2" to each
-                   ; nibble, bringing each one into the range [2, 5].
+  and %00000011    ; preserve the two least-significant bits of the
+  add a,%00000010  ; height. This brings the value  down to the range
+                   ; of [0, 3]. Then add "2", bringing the value into
+                   ; the range [2, 5].
   pop hl           ; restore HL
   ret
 
