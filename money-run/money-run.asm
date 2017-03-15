@@ -396,10 +396,27 @@ read_joypad:
   ret
 
 react_to_input:
+  ; When moving horizontally, the player's height needs to be checked
+  ; against the column the player will move into. For that, we'll need
+  ; the player's x position, which we will manipulate before checking
+  ; the height map.
+  call load_player_real_x_position
+  ld c,a
+
 .move_right:
   ld a,[PAD]
   bit 4,a
   jr z,.move_left
+
+  ; Check if the player is allowed to move right
+  ld a,c        ; reload the x position and get the position the right
+  add 16        ;   side of the player would end up at
+  call load_height_map_entry_for_x_position
+  call height_to_num_pixels_above_column
+  add 1         ; add 1 to the number of pixels above the column
+                ;   because being exactly on the ground is okay
+  call is_player_above_column
+  jr nz,.move_left
 
   ld a,[PLAYER_STATE]
   sub 175
@@ -412,6 +429,16 @@ react_to_input:
   ld a,[PAD]
   bit 5,a
   jr z,.jump
+
+  ; Check if the player is allowed to move left
+  ld a,c        ; reload the x position and get the position the left
+  sub 1         ;   side of the player would end up at
+  call load_height_map_entry_for_x_position
+  call height_to_num_pixels_above_column
+  add 1         ; add 1 to the number of pixels above the column
+                ;   because being exactly on the ground is okay
+  call is_player_above_column
+  jr nz,.jump
 
   ld a,[PLAYER_STATE]
   sub 1
@@ -501,10 +528,7 @@ check_is_grounded:
   ;       above the height of the tallest column under it.
   ;
   ; Sets the zero flag based on if "a" is "0" or not.
-  ld a,[PLAYER_STATE]  ; to get the player's real x position, start
-  sub 16               ;   with the position on screen, and add the
-  ld hl,BGSCRL         ;   level scroll offset
-  add a,[hl]
+  call load_player_real_x_position
   ld c,a               ; keep the position around for later
 
   and %00001111        ; if the last four bits are zero, then we're
@@ -526,21 +550,22 @@ check_is_grounded:
 
   call max
   call height_to_num_pixels_above_column
-  jr .check_against_player_y_position
+  jr is_player_above_column ; tail call
 
 .on_column:
   ; The player is exclusively over a column.
   ld a,c        ; reload the x position
   call load_height_map_entry_for_x_position
   call height_to_num_pixels_above_column
+  ; drop down into "is_player_above_column" function
 
-.check_against_player_y_position:
-  ; At this point, no matter which branch was executed, register a
-  ; contains the number of pixels above the player's feet on the
-  ; highest column under the player.
+is_player_above_column:
+  ; parameters:
+  ;   a = number of pixels above the column to check against
   ;
-  ; Now, we just compare that value against the position of the
-  ; player's feet, and we're done.
+  ; Sets the zero flag if the player's feet are above the specified
+  ; number of pixels, and unsets the flag otherwise (i.e. z := "is
+  ; player not grounded").
   ld b,a
   ld a,[PLAYER_STATE+1] ; load the player's y position and add 16 to
   add 16                ;   get the position of the player's feet
@@ -615,6 +640,16 @@ position_player:
   ld [PLAYER],a
   ld [PLAYER+4],a
 
+  ret
+
+load_player_real_x_position:
+  ; output:
+  ;   a = the real x position of the player's left side, accounting for
+  ;       how much the background has scrolled (modulo any wraparound).
+  ld a,[PLAYER_STATE]  ; to get the player's real x position, start
+  sub 16               ;   with the position on screen, and add the
+  ld hl,BGSCRL         ;   level scroll offset
+  add a,[hl]
   ret
 
 scroll_bg:
