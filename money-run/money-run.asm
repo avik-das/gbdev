@@ -57,6 +57,7 @@ PLAYER_STATE:
   DS 2 ; the y position
   DS 2 ; the downward velocity
 
+SCROLLFLAG: DB ; whether or not to scroll the world
 VBFLAG: DB ; whether or not we are in V-Blank
 
   ; Instead of directly manipulating values in the OAM during V-Blank,
@@ -149,6 +150,7 @@ loop:
   call react_to_input
   call apply_forces
   call position_player
+  call scroll_world_if_needed
 
   jr loop
 
@@ -302,9 +304,9 @@ load_obj:
 
 start_timer:
   ; The timer will be incremented 4096 times each second, and each time
-  ; it overflows, it will be reset to 0. This means that the timer will
-  ; overflow every (1/4096) * 256 = 0.0625s.
-  ld a,0         ; the value of rTIMA after it overflows
+  ; it overflows, it will be reset to 196. This means that the timer
+  ; will overflow every (1/4096) * (256 - 196) = ~0.0156s.
+  ld a,192       ; the value of rTIMA after it overflows
   ld [$ff06],a
   ld a,%00000100 ; enable the timer
                  ; increment rTIMA at 4096Hz
@@ -336,15 +338,12 @@ vblank:
   reti
 
 timer:
-  push hl
+  push af
 
-  ld hl,BGSCRL
-  inc [hl]
+  ld a,1
+  ld [SCROLLFLAG],a
 
-  ld hl,PLAYER_STATE
-  dec [hl]
-
-  pop hl
+  pop af
   reti
 
   ; = MAIN LOOP FUNCTIONS =============================================
@@ -410,6 +409,26 @@ react_to_input:
 
   ; Check if the player is allowed to move right
   ld a,c        ; reload the x position and get the position the right
+  add 17        ;   side of the player would end up at
+  call load_height_map_entry_for_x_position
+  call height_to_num_pixels_above_column
+  add 1         ; add 1 to the number of pixels above the column
+                ;   because being exactly on the ground is okay
+  call is_player_above_column
+  jr nz,.move_right_slower ; If we can't move right by 2 pixels, try to
+                           ;   move right by only 1 pixel.
+
+  ld a,[PLAYER_STATE]
+  sub 176
+  jr nc,.move_left
+
+  add 178
+  ld [PLAYER_STATE],a
+  jr .move_left
+
+.move_right_slower:
+  ; Check if the player is allowed to move right
+  ld a,c        ; reload the x position and get the position the right
   add 16        ;   side of the player would end up at
   call load_height_map_entry_for_x_position
   call height_to_num_pixels_above_column
@@ -419,11 +438,12 @@ react_to_input:
   jr nz,.move_left
 
   ld a,[PLAYER_STATE]
-  sub 175
+  sub 176
   jr nc,.move_left
 
-  add 176
+  add 177
   ld [PLAYER_STATE],a
+  jr .move_left
 
 .move_left:
   ld a,[PAD]
@@ -647,9 +667,26 @@ load_player_real_x_position:
   ;   a = the real x position of the player's left side, accounting for
   ;       how much the background has scrolled (modulo any wraparound).
   ld a,[PLAYER_STATE]  ; to get the player's real x position, start
-  sub 16               ;   with the position on screen, and add the
+  sub 15               ;   with the position on screen, and add the
   ld hl,BGSCRL         ;   level scroll offset
   add a,[hl]
+  ret
+
+scroll_world_if_needed:
+  ld a,[SCROLLFLAG]
+  cp 0
+  jr z,.no_scroll
+
+  ld a,0
+  ld [SCROLLFLAG],a
+
+  ld hl,BGSCRL
+  inc [hl]
+
+  ld hl,PLAYER_STATE
+  dec [hl]
+
+.no_scroll:
   ret
 
 scroll_bg:
