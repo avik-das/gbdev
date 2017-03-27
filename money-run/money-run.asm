@@ -156,6 +156,9 @@ menu_loop:
   ld a,0
   ld [VBFLAG],a
 
+  ld hl,RANDHEIGHT
+  inc [hl]
+
   call read_joypad
   call react_to_input_in_menu
 
@@ -165,11 +168,6 @@ menu_loop:
 
 start_game:
   di
-  ; TODO: now, that we have the menu, we need to seed the PRNG based on
-  ; how long the player waited until starting the game.
-  ld a,$37
-  ld [RANDHEIGHT],a
-
   call lcd_off
 
   call init_ram_for_gameplay
@@ -210,6 +208,7 @@ init_ram:
   ld [PAD],a
   ld [OLDPAD],a
   ld [VBFLAG],a
+  ld [RANDHEIGHT],a
 
   ret
 
