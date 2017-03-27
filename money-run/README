@@ -3,16 +3,25 @@
 A simple side-scroller, in which the character is asked to go from left
 to right, navigating over a series procedurally generated columns.
 
-The name is refers to the gameplay mechanic in which the player will be
+The name refers to the gameplay mechanic in which the player will be
 trying to collect money while avoiding getting stuck amongst the
-columns.
+columns. This has not been implemented yet. See my HTML5 implementation
+of this game [1] to see what the completed game is supposed to look
+like.
 
 ~~ RUNNING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To assemble and run sprite using an emulator like VBA-M:
+To assemble and run money-run using an emulator like VBA-M:
 
   make
   vbam money-run.gb
 
-Currently, no user input is possible, as this program is in its early
-stages.
+The following buttons are utilized:
+
+   START : start the game
+   D-PAD : move the sprite left or right
+       A : jump
+
+~~ REFERENCES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[1] https://github.com/avik-das/games-practice/tree/master/01-money-run

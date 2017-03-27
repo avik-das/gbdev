@@ -64,3 +64,6 @@ stat-interrupt - A program to demonstrate the use of the LCDC Status
   interrupt in order to achieve some graphical effects that would
   otherwise be difficult or impossible using the video system in the
   Game Boy.
+
+money-run - An actual game, applying the techniques in the above
+  programs to a fully-playable game.
