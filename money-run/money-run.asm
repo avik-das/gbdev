@@ -47,11 +47,16 @@ BGSCRL: DB ; amount to scroll the background by
   ; The Y-coordinate and downward velocity are are stored as two bytes
   ; each, in a 8.8 fixed point format. This means that the first byte
   ; is the integer portion of the number, and the second byte contains
-  ; the fractional portion.
+  ; the fractional portion. The Y-coordinate is the actual pixel
+  ; coordinate on screen, as opposed to being offset by 16 pixels as is
+  ; the case in the OAM structure.
   ;
   ; The X-coordinate does not need to be stored in fixed point format,
   ; since no forces are applied horizontally, so no numeric integration
-  ; needs to be done on the X-coordinate.
+  ; needs to be done on the X-coordinate. The X-coordinate is the
+  ; actual position on screen, plus 16. This allows the player to go
+  ; partally off screen without the position wrapping around.
+  ;
 PLAYER_STATE:
   DB   ; the x position
   DS 2 ; the y position
@@ -113,18 +118,12 @@ start:
   ld sp, $ffff ; put the stack at the top of the RAM
 
 init:
-  ; For now, initialize the PRNG with a hard-coded value, which will
-  ; of course make everything deterministic. Later, we can change this
-  ; to use some user-dependent data as the seed.
-  ld a,$37
-  ld [RANDHEIGHT],a
-
   call lcd_off
 
   call init_ram
   call copy_dma_routine
-  call load_bg
-  call load_obj
+  call load_bg_tileset
+  call init_player_obj
 
   call lcd_on
   call start_timer
@@ -134,35 +133,95 @@ init:
   ld [$ffff],a
   ei
 
-  ; = MAIN LOOP =======================================================
+  ; = MENU INITIALIZATION + MENU LOOP =================================
 
-loop:
+switch_to_menu:
+  di
+  call lcd_off
+
+  call init_ram_for_menu
+  call load_bg_for_menu
+  call place_player_in_menu
+
+  call lcd_on
+  ei
+
+menu_loop:
   halt
   nop
 
   ld a,[VBFLAG]
   or 0
-  jr z,loop
+  jr z,menu_loop
   ld a,0
   ld [VBFLAG],a
 
   call read_joypad
-  call react_to_input
+  call react_to_input_in_menu
+
+  jr menu_loop
+
+  ; = GAMEPLAY INITIALIZATION + GAMEPLAY LOOP =========================
+
+start_game:
+  di
+  ; TODO: now, that we have the menu, we need to seed the PRNG based on
+  ; how long the player waited until starting the game.
+  ld a,$37
+  ld [RANDHEIGHT],a
+
+  call lcd_off
+
+  call init_ram_for_gameplay
+  call generate_initial_bg_for_gameplay
+  call set_player_initial_position_for_gameplay
+
+  call lcd_on
+  ei
+
+gameplay_loop:
+  halt
+  nop
+
+  ld a,[VBFLAG]
+  or 0
+  jr z,gameplay_loop
+  ld a,0
+  ld [VBFLAG],a
+
+  call read_joypad
+  call react_to_input_during_gameplay
   call apply_forces
   call position_player
   call scroll_world_if_needed
 
-  jr loop
+  call check_for_game_over
+
+  jr gameplay_loop
 
   ; = INITIALIZATION FUNCTIONS ========================================
 
 init_ram:
-  ; initialize the RAM variables
+  ; Initialize the RAM variables, but only the ones used all throughout
+  ; the program. There are other variables only used in one mode of the
+  ; program (e.g. menu vs. gameplay) that are initialized at the
+  ; beginning of that mode.
   ld a,0
   ld [PAD],a
   ld [OLDPAD],a
-  ld [BGSCRL],a
   ld [VBFLAG],a
+
+  ret
+
+init_ram_for_menu:
+  ld a,0
+  ld [BGSCRL],a
+
+  ret
+
+init_ram_for_gameplay:
+  ld a,0
+  ld [BGSCRL],a
 
   ret
 
@@ -175,20 +234,123 @@ copy_dma_routine:
 
   ret
 
-load_bg:
+load_bg_tileset:
   ld a,[bgpal] ; set the background palette
   ld [$ff47],a
-
-  ; reset the screen position
-  ld a,0
-  ld [$ff42],a ; scrolly will always be 0
-  ld [$ff43],a ; scrollx starts at 0
 
   ; load the background tiles into the Tile Data Table
   ld hl,bgbox  ; source address
   ld de,$8800  ; destination address
-  ld bc,96     ; number of bytes to copy
+  ld bc,624    ; number of bytes to copy
   call memcpy
+
+  ret
+
+load_bg_for_menu:
+  ; reset the screen position, both scrolly and scrollx
+  ld a,0
+  ld [$ff42],a
+  ld [$ff43],a
+
+  ; Zero out the background by loading only sky tiles. Some of the
+  ; tiles will be overwritten by other tiles.
+
+  ld b,$04    ; we will write $0400 (1024) bytes
+  ld c,$00
+  ld hl,$9800 ; we will be writing to the BG tile map
+.bg_reset_loop:
+  ld a,$84    ; we will only be writing sky tiles
+  ld [hl],a   ; store one byte in the destination
+  inc hl      ; prepare to write another byte
+
+  ; the same caveat applies as in memcpy
+  dec bc    ; decrement the counter
+  ld a,b
+  or c
+  jr z,.bg_reset_loop_done ; return if all bytes written
+
+  jr .bg_reset_loop
+
+.bg_reset_loop_done:
+
+  ; Boxes
+
+  ld a,$80      ; box top-left tiles
+  ld [$9908],a
+  ld [$9948],a
+  ld [$994a],a
+  ld [$994c],a
+  ld [$9986],a
+  ld [$9988],a
+  ld [$998a],a
+  ld [$998c],a
+
+  ld a,$81      ; box top-right tiles
+  ld [$9909],a
+  ld [$9949],a
+  ld [$994b],a
+  ld [$994d],a
+  ld [$9987],a
+  ld [$9989],a
+  ld [$998b],a
+  ld [$998d],a
+
+  ld a,$82      ; box bottom-left tiles
+  ld [$9928],a
+  ld [$9968],a
+  ld [$996a],a
+  ld [$996c],a
+  ld [$99a6],a
+  ld [$99a8],a
+  ld [$99aa],a
+  ld [$99ac],a
+
+  ld a,$83      ; box bottom-right tiles
+  ld [$9929],a
+  ld [$9969],a
+  ld [$996b],a
+  ld [$996d],a
+  ld [$99a7],a
+  ld [$99a9],a
+  ld [$99ab],a
+  ld [$99ad],a
+
+  ; Game title
+
+  ld hl,bgtitlemap      ; source address
+  ld de,$9845           ; destination address
+  ld bc,10              ; number of bytes to copy
+  call memcpy
+
+  ld hl,bgtitlemap + 10 ; source address
+  ld de,$9865           ; destination address
+  ld bc,10              ; number of bytes to copy
+  call memcpy
+
+  ld hl,bgtitlemap + 20 ; source address
+  ld de,$9887           ; destination address
+  ld bc,6               ; number of bytes to copy
+  call memcpy
+
+  ld hl,bgtitlemap + 26 ; source address
+  ld de,$98a7           ; destination address
+  ld bc,6               ; number of bytes to copy
+  call memcpy
+
+  ; Press start text
+
+  ld hl,bgpressstartmap ; source address
+  ld de,$99e4           ; destination address
+  ld bc,12              ; number of bytes to copy
+  call memcpy
+
+  ret
+
+generate_initial_bg_for_gameplay:
+  ; reset the screen position
+  ld a,0
+  ld [$ff42],a ; scrolly will always be 0
+  ld [$ff43],a ; scrollx starts at 0
 
   call generate_initial_heights
   call load_all_columns_into_bg_tile_map
@@ -245,23 +407,10 @@ load_column_into_bg_tile_map:
 
   jp load_column_into_bg_tile_map_at_address ; tail call
 
-load_obj:
-  ; Set up the initial player state.
-  ;
-  ; The x position is the actual position on screen, plus 16. This
-  ; allows the player to go partally off screen without the position
-  ; wrapping around.
-  ;
-  ; The y position is the actual pixel coordinates on screen, as
-  ; opposed to being offset by 16 pixels as is the case in the OAM
-  ; structure.
-  ld a,144
-  ld [PLAYER_STATE],a   ; X-coordinate
-  ld a,0
-  ld [PLAYER_STATE+1],a ; Y-coordinate (integer part)
-  ld [PLAYER_STATE+2],a ; Y-coordinate (fractional part)
-  ld [PLAYER_STATE+3],a ; downward velocity (integer part)
-  ld [PLAYER_STATE+4],a ; downward velocity (fractional part)
+init_player_obj:
+  ; Set up the initial player state, so that it can be placed as
+  ; necessary. This doesn't actually position the player, as the
+  ; starting position differs based on if we're on the menu or not.
 
   ; load the object palette 0
   ld a,[sppal] ; load the object palette 0 data
@@ -300,7 +449,29 @@ load_obj:
                  ; 4 LSB ignored
   ld [PLAYER+7],a
 
-  jp position_player ; tail call
+  ret
+
+place_player_in_menu:
+  ld a,101
+  ld [PLAYER_STATE],a   ; X-coordinate
+  ld a,64
+  ld [PLAYER_STATE+1],a ; Y-coordinate (integer part)
+
+  ; All other portions of the player state are not set because they are
+  ; not used during the menu.
+
+  jp position_player    ; tail call
+
+set_player_initial_position_for_gameplay:
+  ld a,144
+  ld [PLAYER_STATE],a   ; X-coordinate
+  ld a,0
+  ld [PLAYER_STATE+1],a ; Y-coordinate (integer part)
+  ld [PLAYER_STATE+2],a ; Y-coordinate (fractional part)
+  ld [PLAYER_STATE+3],a ; downward velocity (integer part)
+  ld [PLAYER_STATE+4],a ; downward velocity (fractional part)
+
+  jp position_player    ; tail call
 
 start_timer:
   ; The timer will be incremented 4096 times each second, and each time
@@ -394,7 +565,18 @@ read_joypad:
 
   ret
 
-react_to_input:
+react_to_input_in_menu:
+.start_game:
+  ld a,[PAD]
+  bit 3,a
+  jr z,.done
+
+  jp start_game
+
+.done:
+  ret
+
+react_to_input_during_gameplay:
   ; When moving horizontally, the player's height needs to be checked
   ; against the column the player will move into. For that, we'll need
   ; the player's x position, which we will manipulate before checking
@@ -687,6 +869,26 @@ scroll_world_if_needed:
   dec [hl]
 
 .no_scroll:
+  ret
+
+check_for_game_over:
+  ; The player's x position is stored as the on-screen x position plus
+  ; 16, so that the player can be partially to the left of the screen.
+  ; This means that when the player has fully gone past the left of the
+  ; screen, the position has wrapped around to 255.
+
+  ; Because the player can't go too far to the right of the screen, we
+  ; can safely assume the player's position is near 255 only when the
+  ; player has gone to the left of the screen. Accounting for a little
+  ; bit of buffer, we can safely check to see if the position is near
+  ; 255, and if so, end the game.
+  ld a,[PLAYER_STATE]
+  sub 250
+  jr c,.done
+
+  jp switch_to_menu
+
+.done:
   ret
 
 scroll_bg:
@@ -995,6 +1197,96 @@ bgsky:
   ; background sky, 1x1 tile
   DB $00,$00,$00,$00,$00,$00,$00,$00
   DB $00,$00,$00,$00,$00,$00,$00,$00
+
+bgbigfont:
+  ; backgound menu title, 7 2x2 tites
+  DB $00,$00,$38,$38,$6c,$6c,$5e,$5e  ; M
+  DB $5f,$5f,$5f,$5f,$5f,$5f,$5f,$5f
+  DB $00,$00,$1c,$1c,$36,$36,$6e,$6e
+  DB $de,$de,$de,$de,$fe,$fe,$fe,$fe
+  DB $5b,$5b,$5b,$5b,$59,$59,$78,$78
+  DB $78,$78,$78,$78,$38,$38,$00,$00
+  DB $de,$de,$de,$de,$9e,$9e,$1e,$1e
+  DB $1e,$1e,$1e,$1e,$1c,$1c,$00,$00
+  DB $00,$00,$07,$07,$1f,$1f,$36,$36  ; O
+  DB $2c,$2c,$6c,$6c,$5c,$5c,$5c,$5c
+  DB $00,$00,$e0,$e0,$f8,$f8,$7c,$7c
+  DB $3c,$3c,$3e,$3e,$3e,$3e,$3e,$3e
+  DB $5c,$5c,$7c,$7c,$7c,$7c,$3c,$3c
+  DB $3e,$3e,$1f,$1f,$07,$07,$00,$00
+  DB $3e,$3e,$2e,$2e,$2e,$2e,$2c,$2c
+  DB $6c,$6c,$f8,$f8,$e0,$e0,$00,$00
+  DB $00,$00,$38,$38,$6e,$6e,$5f,$5f  ; N
+  DB $5f,$5f,$5f,$5f,$5b,$5b,$5b,$5b
+  DB $00,$00,$1c,$1c,$1e,$1e,$16,$16
+  DB $16,$16,$16,$16,$96,$96,$96,$96
+  DB $59,$59,$59,$59,$58,$58,$78,$78
+  DB $78,$78,$78,$78,$38,$38,$00,$00
+  DB $d6,$d6,$d6,$d6,$f6,$f6,$fe,$fe
+  DB $7e,$7e,$7e,$7e,$1c,$1c,$00,$00
+  DB $00,$00,$3f,$3f,$67,$67,$5e,$5e  ; E
+  DB $58,$58,$70,$70,$70,$70,$3f,$3f
+  DB $00,$00,$fc,$fc,$fe,$fe,$3e,$3e
+  DB $0e,$0e,$04,$04,$00,$00,$80,$80
+  DB $3f,$3f,$78,$78,$50,$50,$58,$58
+  DB $7e,$7e,$7f,$7f,$3f,$3f,$00,$00
+  DB $80,$80,$04,$04,$0e,$0e,$1e,$1e
+  DB $36,$36,$ee,$ee,$fc,$fc,$00,$00
+  DB $00,$00,$38,$38,$68,$68,$58,$58  ; Y
+  DB $58,$58,$7c,$7c,$3e,$3e,$3f,$3f
+  DB $00,$00,$1c,$1c,$1e,$1e,$16,$16
+  DB $16,$16,$36,$36,$6c,$6c,$dc,$dc
+  DB $1f,$1f,$0f,$0f,$03,$03,$03,$03
+  DB $03,$03,$03,$03,$01,$01,$00,$00
+  DB $f8,$f8,$e0,$e0,$c0,$c0,$c0,$c0
+  DB $c0,$c0,$c0,$c0,$80,$80,$00,$00
+  DB $00,$00,$3f,$3f,$6f,$6f,$5c,$5c  ; R
+  DB $58,$58,$58,$58,$5c,$5c,$5f,$5f
+  DB $00,$00,$e0,$e0,$f8,$f8,$7c,$7c
+  DB $3c,$3c,$2c,$2c,$68,$68,$d8,$d8
+  DB $5f,$5f,$5f,$5f,$5b,$5b,$79,$79
+  DB $78,$78,$78,$78,$38,$38,$00,$00
+  DB $f0,$f0,$c0,$c0,$e0,$e0,$f0,$f0
+  DB $f8,$f8,$7c,$7c,$38,$38,$00,$00
+  DB $00,$00,$38,$38,$68,$68,$58,$58  ; U
+  DB $58,$58,$58,$58,$58,$58,$58,$58
+  DB $00,$00,$1c,$1c,$1e,$1e,$1e,$1e
+  DB $1e,$1e,$1e,$1e,$1e,$1e,$1e,$1e
+  DB $58,$58,$5c,$5c,$7c,$7c,$3f,$3f
+  DB $3f,$3f,$1f,$1f,$07,$07,$00,$00
+  DB $16,$16,$36,$36,$2e,$2e,$ec,$ec
+  DB $dc,$dc,$f8,$f8,$e0,$e0,$00,$00
+
+bgsmallfont:
+  DB $00,$00,$3c,$3c,$42,$42,$42,$42  ; P
+  DB $7c,$7c,$40,$40,$40,$40,$00,$00
+  DB $00,$00,$3c,$3c,$42,$42,$42,$42  ; R
+  DB $7c,$7c,$48,$48,$44,$44,$00,$00
+  DB $00,$00,$3c,$3c,$42,$42,$42,$42  ; E
+  DB $7c,$7c,$40,$40,$3e,$3e,$00,$00
+  DB $00,$00,$3c,$3c,$42,$42,$40,$40  ; S
+  DB $3c,$3c,$02,$02,$3c,$3c,$00,$00
+  DB $00,$00,$7e,$7e,$08,$08,$08,$08  ; T
+  DB $08,$08,$08,$08,$08,$08,$00,$00
+  DB $00,$00,$18,$18,$24,$24,$42,$42  ; A
+  DB $7e,$7e,$42,$42,$42,$42,$00,$00
+
+bgtitlemap:
+  ; The tile map for the menu title. This is just the four lines that
+  ; make up the title, and that too only the part of the lines that
+  ; have actual tiles in them. The bytes are copied into the correct
+  ; location in the tile map area of memory.
+  DB $85,$86,$89,$8a,$8d,$8e,$91,$92,$95,$96  ; Line 0
+  DB $87,$88,$8b,$8c,$8f,$90,$93,$94,$97,$98  ; Line 1
+  DB         $99,$9a,$9d,$9e,$8d,$8e          ; Line 2
+  DB         $9b,$9c,$9f,$a0,$8f,$90          ; Line 3
+
+bgpressstartmap:
+  ; The tile map for "PRESS START" text. This is just the line that
+  ; makes up the text, and that too only part of the line. The bytes
+  ; are copied into the correct location int he tile map area of
+  ; memory.
+  DB $a1,$a2,$a3,$a4,$a4,$84,$84,$a4,$a5,$a6,$a2,$a5
 
 ghost:
   ; foreground ghost
