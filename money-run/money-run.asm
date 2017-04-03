@@ -146,13 +146,13 @@ switch_to_menu:
   call lcd_on
   ei
 
-menu_loop:
+.loop:
   halt
   nop
 
   ld a,[VBFLAG]
   or 0
-  jr z,menu_loop
+  jr z,.loop
   ld a,0
   ld [VBFLAG],a
 
@@ -162,7 +162,7 @@ menu_loop:
   call read_joypad
   call react_to_input_in_menu
 
-  jr menu_loop
+  jr .loop
 
   ; = GAMEPLAY INITIALIZATION + GAMEPLAY LOOP =========================
 
@@ -177,13 +177,13 @@ start_game:
   call lcd_on
   ei
 
-gameplay_loop:
+.loop:
   halt
   nop
 
   ld a,[VBFLAG]
   or 0
-  jr z,gameplay_loop
+  jr z,.loop
   ld a,0
   ld [VBFLAG],a
 
@@ -195,7 +195,7 @@ gameplay_loop:
 
   call check_for_game_over
 
-  jr gameplay_loop
+  jr .loop
 
   ; = MENU INITIALIZATION + MENU LOOP =================================
 
@@ -210,20 +210,20 @@ show_game_over_screen:
   call lcd_on
   ei
 
-game_over_loop:
+.loop:
   halt
   nop
 
   ld a,[VBFLAG]
   or 0
-  jr z,game_over_loop
+  jr z,.loop
   ld a,0
   ld [VBFLAG],a
 
   call read_joypad
   call react_to_input_in_game_over
 
-  jr game_over_loop
+  jr .loop
 
   ; = INITIALIZATION FUNCTIONS ========================================
 
@@ -402,7 +402,7 @@ generate_initial_heights:
   ld hl,HEIGHTS ; the base address of the height map
 
   ld a,$0
-_generate_initial_heights_loop:
+.loop:
   push af       ; preserve A
   call next_rand_height
   ld [hl],a     ; generate two random heights and place it into the
@@ -412,19 +412,19 @@ _generate_initial_heights_loop:
   pop af        ; restore A
   inc a         ; only generate data for 16 bytes
   cp $16
-  jr nz, _generate_initial_heights_loop
+  jr nz, .loop
 
   ret
 
 load_all_columns_into_bg_tile_map:
   ld a,$0
-_load_all_columns_loop:
+.loop:
   push af
   call load_column_into_bg_tile_map
   pop af
   inc a
   cp $10
-  jr nz, _load_all_columns_loop
+  jr nz, .loop
 
   ret
 
@@ -1006,10 +1006,10 @@ load_column_into_bg_tile_map_at_address:
             ;   on each of the top and bottom portions of the box.
 
   ld c,$0
-_load_column_loop:
+.loop:
   ld a,c    ; if c == b: load a box tile
   sub b
-  jr nc, _load_column_box
+  jr nc, .box
 
   ld a,$84  ; otherwise, load a sky tile
   ld [hl],a ; fill out the top-left
@@ -1020,9 +1020,9 @@ _load_column_loop:
   inc hl    ; fill out the bottom-right
   ld [hl],a
   add hl,de ; get ready for the next load
-  jr _load_column_graphic_done
+  jr .done
 
-_load_column_box:
+.box:
   ld a,$80  ; load a box tile
   ld [hl],a ; fill out the top-left
   inc hl    ; fill out the top-right
@@ -1036,11 +1036,11 @@ _load_column_box:
   ld [hl],a
   add hl,de ; get ready for the next load
 
-_load_column_graphic_done:
+.done:
   inc c     ; only bother filling out the top 9 rows, as that's all
   ld a,c    ; that will be visible on screen
   cp $9
-  jr nz, _load_column_loop
+  jr nz, .loop
   ret
 
 clear_bg:
