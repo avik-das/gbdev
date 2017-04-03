@@ -197,6 +197,34 @@ gameplay_loop:
 
   jr gameplay_loop
 
+  ; = MENU INITIALIZATION + MENU LOOP =================================
+
+show_game_over_screen:
+  di
+  call lcd_off
+
+  call init_ram_for_game_over
+  call load_bg_for_game_over
+  call hide_player
+
+  call lcd_on
+  ei
+
+game_over_loop:
+  halt
+  nop
+
+  ld a,[VBFLAG]
+  or 0
+  jr z,game_over_loop
+  ld a,0
+  ld [VBFLAG],a
+
+  call read_joypad
+  call react_to_input_in_game_over
+
+  jr game_over_loop
+
   ; = INITIALIZATION FUNCTIONS ========================================
 
 init_ram:
@@ -213,6 +241,7 @@ init_ram:
   ret
 
 init_ram_for_menu:
+init_ram_for_game_over:
   ld a,0
   ld [BGSCRL],a
 
@@ -240,7 +269,7 @@ load_bg_tileset:
   ; load the background tiles into the Tile Data Table
   ld hl,bgbox  ; source address
   ld de,$8800  ; destination address
-  ld bc,624    ; number of bytes to copy
+  ld bc,816    ; number of bytes to copy
   call memcpy
 
   ret
@@ -251,26 +280,7 @@ load_bg_for_menu:
   ld [$ff42],a
   ld [$ff43],a
 
-  ; Zero out the background by loading only sky tiles. Some of the
-  ; tiles will be overwritten by other tiles.
-
-  ld b,$04    ; we will write $0400 (1024) bytes
-  ld c,$00
-  ld hl,$9800 ; we will be writing to the BG tile map
-.bg_reset_loop:
-  ld a,$84    ; we will only be writing sky tiles
-  ld [hl],a   ; store one byte in the destination
-  inc hl      ; prepare to write another byte
-
-  ; the same caveat applies as in memcpy
-  dec bc    ; decrement the counter
-  ld a,b
-  or c
-  jr z,.bg_reset_loop_done ; return if all bytes written
-
-  jr .bg_reset_loop
-
-.bg_reset_loop_done:
+  call clear_bg
 
   ; Boxes
 
@@ -341,6 +351,38 @@ load_bg_for_menu:
   ld hl,bgpressstartmap ; source address
   ld de,$99e4           ; destination address
   ld bc,12              ; number of bytes to copy
+  call memcpy
+
+  ret
+
+load_bg_for_game_over:
+  ; reset the screen position, both scrolly and scrollx
+  ld a,0
+  ld [$ff42],a
+  ld [$ff43],a
+
+  call clear_bg
+
+  ; Game over title
+
+  ld hl,gameovertitlemap      ; source address
+  ld de,$98c6                 ; destination address
+  ld bc,8                     ; number of bytes to copy
+  call memcpy
+
+  ld hl,gameovertitlemap + 8  ; source address
+  ld de,$98e6                 ; destination address
+  ld bc,8                     ; number of bytes to copy
+  call memcpy
+
+  ld hl,gameovertitlemap + 16 ; source address
+  ld de,$9926                 ; destination address
+  ld bc,8                     ; number of bytes to copy
+  call memcpy
+
+  ld hl,gameovertitlemap + 24 ; source address
+  ld de,$9946                 ; destination address
+  ld bc,8                     ; number of bytes to copy
   call memcpy
 
   ret
@@ -461,6 +503,11 @@ place_player_in_menu:
 
   jp position_player    ; tail call
 
+hide_player:
+  ld a,240
+  ld [PLAYER_STATE+1],a ; Y-coordinate (integer part)
+  jp position_player    ; tail call
+
 set_player_initial_position_for_gameplay:
   ld a,144
   ld [PLAYER_STATE],a   ; X-coordinate
@@ -570,7 +617,26 @@ react_to_input_in_menu:
   bit 3,a
   jr z,.done
 
+  ld a,[OLDPAD]
+  bit 3,a
+  jr nz,.done ; only respond to start if start wasn't pressed before
+
   jp start_game
+
+.done:
+  ret
+
+react_to_input_in_game_over:
+.switch_to_menu:
+  ld a,[PAD]
+  bit 3,a
+  jr z,.done
+
+  ld a,[OLDPAD]
+  bit 3,a
+  jr nz,.done ; only respond to start if start wasn't pressed before
+
+  jp switch_to_menu
 
 .done:
   ret
@@ -885,7 +951,7 @@ check_for_game_over:
   sub 250
   jr c,.done
 
-  jp switch_to_menu
+  jp show_game_over_screen
 
 .done:
   ret
@@ -975,6 +1041,28 @@ _load_column_graphic_done:
   ld a,c    ; that will be visible on screen
   cp $9
   jr nz, _load_column_loop
+  ret
+
+clear_bg:
+  ; Zero out the background by loading only sky tiles.
+
+  ld b,$04    ; we will write $0400 (1024) bytes
+  ld c,$00
+  ld hl,$9800 ; we will be writing to the BG tile map
+.bg_reset_loop:
+  ld a,$84    ; we will only be writing sky tiles
+  ld [hl],a   ; store one byte in the destination
+  inc hl      ; prepare to write another byte
+
+  ; the same caveat applies as in memcpy
+  dec bc    ; decrement the counter
+  ld a,b
+  or c
+  jr z,.bg_reset_loop_done ; return if all bytes written
+
+  jr .bg_reset_loop
+
+.bg_reset_loop_done:
   ret
 
 memcpy:
@@ -1255,6 +1343,30 @@ bgbigfont:
   DB $3f,$3f,$1f,$1f,$07,$07,$00,$00
   DB $16,$16,$36,$36,$2e,$2e,$ec,$ec
   DB $dc,$dc,$f8,$f8,$e0,$e0,$00,$00
+  DB $00,$00,$07,$07,$1f,$1f,$36,$36 ; G
+  DB $2c,$2c,$6c,$6c,$5c,$5c,$5c,$5c
+  DB $00,$00,$f0,$f0,$fc,$fc,$1e,$1e
+  DB $0e,$0e,$00,$00,$00,$00,$7e,$7e
+  DB $5c,$5c,$7c,$7c,$7c,$7c,$3c,$3c
+  DB $3e,$3e,$1f,$1f,$07,$07,$00,$00
+  DB $76,$76,$1e,$1e,$0e,$0e,$1e,$1e
+  DB $3e,$3e,$fc,$fc,$f0,$f0,$00,$00
+  DB $00,$00,$07,$07,$1f,$1f,$37,$37  ; A
+  DB $2f,$2f,$6c,$6c,$5c,$5c,$58,$58
+  DB $00,$00,$e0,$e0,$f8,$f8,$fc,$fc
+  DB $fc,$fc,$3e,$3e,$3e,$3e,$1e,$1e
+  DB $58,$58,$5f,$5f,$5f,$5f,$78,$78
+  DB $78,$78,$78,$78,$38,$38,$00,$00
+  DB $1e,$1e,$fe,$fe,$f6,$f6,$16,$16
+  DB $16,$16,$16,$16,$1c,$1c,$00,$00
+  DB $00,$00,$38,$38,$6c,$6c,$6c,$6c  ; V
+  DB $2e,$2e,$36,$36,$17,$17,$1b,$1b
+  DB $00,$00,$1c,$1c,$3e,$3e,$2e,$2e
+  DB $6c,$6c,$5c,$5c,$d8,$d8,$f8,$f8
+  DB $0b,$0b,$0d,$0d,$05,$05,$06,$06
+  DB $03,$03,$03,$03,$01,$01,$00,$00
+  DB $f0,$f0,$f0,$f0,$e0,$e0,$e0,$e0
+  DB $c0,$c0,$c0,$c0,$80,$80,$00,$00
 
 bgsmallfont:
   DB $00,$00,$3c,$3c,$42,$42,$42,$42  ; P
@@ -1285,7 +1397,17 @@ bgpressstartmap:
   ; makes up the text, and that too only part of the line. The bytes
   ; are copied into the correct location int he tile map area of
   ; memory.
-  DB $a1,$a2,$a3,$a4,$a4,$84,$84,$a4,$a5,$a6,$a2,$a5
+  DB $ad,$ae,$af,$b0,$b0,$84,$84,$b0,$b1,$b2,$ae,$b1
+
+gameovertitlemap:
+  ; The tile map for the game over title. This is just the four lines
+  ; that make up the title, and that too only the part of the lines
+  ; that have actual tiles in them. The bytes are copied into the
+  ; correct location in the tile map area of memory.
+  DB $a1,$a2,$a5,$a6,$85,$86,$91,$92  ; Line 0
+  DB $a3,$a4,$a7,$a8,$87,$88,$93,$94  ; Line 1
+  DB $89,$8a,$a9,$aa,$91,$92,$99,$9a  ; Line 2
+  DB $8b,$8c,$ab,$ac,$93,$94,$9b,$9c  ; Line 3
 
 ghost:
   ; foreground ghost
