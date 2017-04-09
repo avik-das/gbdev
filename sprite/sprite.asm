@@ -17,7 +17,7 @@
   ; used in the program. Typically, we will store data in the internal
   ; RAM, which gives us 8KB to work with.
 
-SECTION "RAM",BSS[$c000]
+SECTION "RAM",WRAM0[$c000]
 
   ; The buttons that are joypad pressed on the joypad. The fields are
   ; as follows:
@@ -56,15 +56,15 @@ PLAYER EQU OAMBUF ; the player starts at the first sprite
   ; procedures responsible for taking any action. The procedures will
   ; call "reti".
 
-SECTION "vblank",HOME[$40]
+SECTION "vblank",ROM0[$40]
   nop
   jp    vblank
 
-SECTION "timer" ,HOME[$50]
+SECTION "timer" ,ROM0[$50]
   nop
   jp    timer
 
-SECTION "start",HOME[$100]
+SECTION "start",ROM0[$100]
   nop
   jp    start
   
