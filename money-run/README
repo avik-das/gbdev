@@ -11,16 +11,21 @@ like.
 
 ~~ RUNNING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To assemble and run money-run using an emulator like VBA-M:
+To assemble and run money-run using an emulator like gambatte:
 
   make
-  vbam money-run.gb
+  gambatte money-run.gb
 
 The following buttons are utilized:
 
    START : start the game
    D-PAD : move the sprite left or right
        A : jump
+
+~~ EMULATOR COMPATIBILITY ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For some reason, the game doesn't seem to work on VisualBoyAdvance-M.
+However, it runs fine on both gambatte and GameBoy Online.
 
 ~~ REFERENCES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
