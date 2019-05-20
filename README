@@ -57,6 +57,10 @@ Additionally, there are some other emulators to note:
 More detailed descriptions are available in the README files inside the
 directory containing each program.
 
+buttons - A simple test program that shows which button (or multiple
+  buttons) is currently being pressed. This functionality allows testing
+  controllers on emulators.
+
 sprite - A simple test program that demonstrates a wide variety of
   hardware-provided functionality and general programming techniques.
 

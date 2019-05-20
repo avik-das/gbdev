@@ -1,0 +1,14 @@
+== BUTTONS - Avik Das =================================================
+
+A simple test program that shows which button (or multiple buttons) is
+currently being pressed. This functionality allows testing controllers
+on emulators.
+
+~~ RUNNING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To assemble and run sprite using an emulator like VBA-M:
+
+  make
+  vbam buttons.gb
+
+Press any button to see the same button on the screen highlighted.
