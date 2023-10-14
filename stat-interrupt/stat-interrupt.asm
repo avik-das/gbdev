@@ -3,7 +3,7 @@
 
   ; = DATA/VARIABLES ==================================================
 
-SECTION "RAM",BSS[$c000]
+SECTION "RAM",WRAM0[$c000]
 
 SCRBAS: DB ; the base offset into the background scroll table
 SCROFF: DB ; display line-specific offset into the scroll table
@@ -17,19 +17,19 @@ VBFLAG: DB ; whether or not we are in V-Blank
   ; procedures responsible for taking any action. The procedures will
   ; call "reti".
 
-SECTION "vblank",HOME[$40]
+SECTION "vblank",ROM0[$40]
   nop
   jp    vblank
 
-SECTION "stat"  ,HOME[$48]
+SECTION "stat"  ,ROM0[$48]
   nop
   jp    stat
 
-SECTION "timer" ,HOME[$50]
+SECTION "timer" ,ROM0[$50]
   nop
   jp    timer
 
-SECTION "start",HOME[$100]
+SECTION "start" ,ROM0[$100]
   nop
   jp    start
   
@@ -536,10 +536,10 @@ window:
   ; Sine values are between [-1.0,1.0], so by multiplying and shifting
   ; the right values, we bring the values into [0,128].
 sintbl:
-ANGLE   SET     0.0
-        REPT    256
-        DB      (MUL(64.0,SIN(ANGLE))+64.0)>>16
-ANGLE   SET     ANGLE+256.0
-        ENDR
+DEF angle = 0
+REPT 256
+  DB (64 * SIN(angle) + 64) >> 16
+  DEF angle += 256
+ENDR
 
 ; vim: ft=rgbasm:tw=72:ts=2:sw=2

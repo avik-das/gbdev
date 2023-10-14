@@ -152,7 +152,7 @@ load_bg:
 
   ret
 
-SetUpArrow: MACRO
+MACRO SetUpArrow
     ; parameters:
     ;   \1 = sprite number
     ;   \2 = x-coordinate
@@ -275,7 +275,7 @@ read_joypad:
 
   ret
 
-ReactToSingleKey: MACRO
+MACRO ReactToSingleKey
     ; parameters
     ;   \1 = arrow sprite number
     ;   \2 = bit of key being checked
